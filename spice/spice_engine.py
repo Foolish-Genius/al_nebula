@@ -61,6 +61,8 @@ class SpiceEvaluator:
             "peaking_boost": float("nan"),
             "power": float("nan"),
             "error": None,
+            "ac_frequency_hz": np.array([]),
+            "ac_gain_db": np.array([]),
         }
         try:
             parameters = self.map_actions(actions)
@@ -73,8 +75,9 @@ class SpiceEvaluator:
                     return failure
 
                 ac_output = self._run_ngspice(self._with_commands(netlist, self._ac_commands()), base.with_name("ac"))
-                dc_gain = self._parse_ac_gain(ac_output, 10e6)
-                nyquist_gain = self._parse_ac_gain(ac_output, 2.5e9)
+                frequencies, gains = self._parse_ac_data(ac_output)
+                dc_gain = self._nearest_value(frequencies, gains, 10e6)
+                nyquist_gain = self._nearest_value(frequencies, gains, 2.5e9)
                 if not np.isfinite(dc_gain) or not np.isfinite(nyquist_gain):
                     return failure
                 return {
@@ -83,6 +86,8 @@ class SpiceEvaluator:
                     "nyquist_gain": nyquist_gain,
                     "peaking_boost": nyquist_gain - dc_gain,
                     "power": 1.2 * parameters["I_bias"],
+                    "ac_frequency_hz": frequencies,
+                    "ac_gain_db": gains,
                 }
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             failure["error"] = str(error)
@@ -194,7 +199,12 @@ class SpiceEvaluator:
 
     @staticmethod
     def _parse_ac_gain(output: str, target_frequency: float) -> float:
-        rows: list[tuple[float, complex]] = []
+        frequencies, gains = SpiceEvaluator._parse_ac_data(output)
+        return SpiceEvaluator._nearest_value(frequencies, gains, target_frequency)
+
+    @staticmethod
+    def _parse_ac_data(output: str) -> tuple[np.ndarray, np.ndarray]:
+        rows: list[tuple[float, float, float]] = []
         for line in output.splitlines():
             fields = line.split()
             if len(fields) < 4:
@@ -205,13 +215,17 @@ class SpiceEvaluator:
                 imaginary = float(fields[3].strip(","))
             except ValueError:
                 continue
-            rows.append((frequency, complex(real, imaginary)))
+            rows.append((frequency, real, imaginary))
         if not rows:
             raise ValueError("missing AC data")
-        frequency, value = min(rows, key=lambda row: abs(row[0] - target_frequency))
-        if frequency <= 0:
+        data = np.asarray(rows, dtype=float)
+        if np.any(data[:, 0] <= 0):
             raise ValueError("invalid AC frequency")
-        return float(20.0 * np.log10(abs(value)))
+        return data[:, 0], 20.0 * np.log10(np.abs(data[:, 1] + 1j * data[:, 2]))
+
+    @staticmethod
+    def _nearest_value(frequencies: np.ndarray, values: np.ndarray, target: float) -> float:
+        return float(values[np.argmin(np.abs(frequencies - target))])
 
     @staticmethod
     def _parse_transient(output: str) -> tuple[np.ndarray, np.ndarray]:

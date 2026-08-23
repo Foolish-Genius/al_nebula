@@ -31,6 +31,8 @@ def main() -> None:
         metrics,
         transient_time_s=transient_result["time_s"],
         transient_output_v=transient_result["output_v"],
+        ac_frequency_hz=ac_result["ac_frequency_hz"],
+        ac_gain_db=ac_result["ac_gain_db"],
         pvt_results=[
             {"name": corner.name, "status": "not_run", "peaking_boost": float("nan")}
             for corner in all_pvt_corners()

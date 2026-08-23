@@ -1,17 +1,18 @@
 {
-  "dc_gain": 4.80277430147631,
+  "dc_gain": 11.091341698948739,
   "dc_valid": true,
-  "eye_height_v": 0.7618749999999999,
+  "eye_height_v": 1.8644584249999998,
   "model_source": "ngspice_generic_level1",
-  "nyquist_gain": 12.481728795468854,
-  "peaking_boost": 7.678954493992544,
-  "power": 0.00069,
+  "nyquist_gain": 18.689059975116663,
+  "peaking_boost": 7.5977182761679245,
+  "power": 0.001823055571037364,
+  "search_evaluations": 100,
   "selected_action": [
-    -0.5,
-    0.25,
-    -0.5,
-    0.5,
-    0.0
+    -0.38989265946997476,
+    0.5088309523034102,
+    0.49390839564681044,
+    -0.17321970222160665,
+    0.6837723796830992
   ],
   "tran_valid": true,
   "transient_error": null
