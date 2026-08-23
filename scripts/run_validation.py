@@ -15,16 +15,22 @@ from spice.spice_engine import SpiceEvaluator
 
 def main() -> None:
     evaluator = SpiceEvaluator()
-    action, search_rows = BoundedDesignSearch(evaluator, seed=7).run(evaluations=24)
+    action, search_rows = BoundedDesignSearch(evaluator, seed=23).run(evaluations=100)
     ac_result = evaluator.run_simulation(action)
     transient_result = evaluator.run_transient(action)
     metrics = {
-        **ac_result,
+        "dc_valid": ac_result["dc_valid"],
+        "dc_gain": ac_result["dc_gain"],
+        "nyquist_gain": ac_result["nyquist_gain"],
+        "peaking_boost": ac_result["peaking_boost"],
+        "power": ac_result["power"],
+        "error": ac_result.get("error"),
         "tran_valid": transient_result["tran_valid"],
         "eye_height_v": transient_result["eye_height_v"],
         "transient_error": transient_result.get("error"),
         "model_source": "ngspice_generic_level1",
         "selected_action": action.tolist(),
+        "search_evaluations": len(search_rows),
     }
     reporter = ValidationReporter("reports")
     paths = reporter.write(

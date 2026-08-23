@@ -25,10 +25,14 @@ python -m pytest
 
 The IHP Open PDK is installed locally at `/home/hp/ihp-open-pdk` (revision
 `22f2a25`). Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
-binary does not support. The default runner therefore uses an explicit ngspice
-Level-1 model to validate the architecture and data flow; reports label this
-model source clearly. Use a PSP-capable simulator such as Xyce for final PDK
-measurements.
+binary does not support as a built-in model. The PDK includes Verilog-A sources
+and an OpenVAF build script. The intended ngspice path is: install OpenVAF with
+its LLVM 21.1 runtime, run `libs.tech/verilog-a/openvaf-compile-va.sh`, then
+pass the generated `psp103.osdi` and `psp103_nqs.osdi` files using
+`SpiceEvaluator(osdi_model_paths=(...))`. Run `python scripts/check_pdk.py` to
+check readiness. The default runner uses an explicit ngspice Level-1 model to
+validate the architecture and data flow; reports label this model source
+clearly. Xyce is not required once the OSDI models are compiled.
 Run `python scripts/run_validation.py` to regenerate the complete artifact set;
 the PVT CSV lists all 45 corners and marks unavailable simulator runs explicitly.
 

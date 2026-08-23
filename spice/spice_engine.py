@@ -23,6 +23,7 @@ class SpiceEvaluator:
         pdk_model_path: str | Path | None = None,
         pdk_corner_path: str | Path | None = None,
         pdk_corner: str = "mos_tt",
+        osdi_model_paths: tuple[str | Path, ...] = (),
     ) -> None:
         project_root = Path(__file__).resolve().parents[1]
         self.template_path = Path(template_path or project_root / "netlists" / "ctle_template.sp")
@@ -31,6 +32,7 @@ class SpiceEvaluator:
         self.pdk_model_path = Path(pdk_model_path) if pdk_model_path else None
         self.pdk_corner_path = Path(pdk_corner_path) if pdk_corner_path else None
         self.pdk_corner = pdk_corner
+        self.osdi_model_paths = tuple(Path(path) for path in osdi_model_paths)
         self.bounds = {
             "W_in": (0.5e-6, 50.0e-6),
             "R_load": (100.0, 1000.0),
@@ -88,6 +90,7 @@ class SpiceEvaluator:
                     "power": 1.2 * parameters["I_bias"],
                     "ac_frequency_hz": frequencies,
                     "ac_gain_db": gains,
+                    "error": None,
                 }
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             failure["error"] = str(error)
@@ -108,13 +111,24 @@ class SpiceEvaluator:
             if time_s.size < 2:
                 return failure
             eye_height = float(np.percentile(output_v, 95) - np.percentile(output_v, 5))
-            return {"tran_valid": eye_height > 0.1, "time_s": time_s, "output_v": output_v, "eye_height_v": eye_height}
+            return {"tran_valid": eye_height > 0.1, "time_s": time_s, "output_v": output_v, "eye_height_v": eye_height, "error": None}
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             failure["error"] = str(error)
             return failure
 
     def _inject_parameters(self, parameters: dict[str, float], transient: bool = False) -> str:
         rendered = self.template.replace("{VDD}", "1.2")
+        if self.osdi_model_paths:
+            rendered = rendered.replace(
+                "M1 outP inP sourceP 0 ctle_nmos W={W_in} L=0.13u",
+                "X1 outP inP sourceP 0 sg13_lv_nmos W={W_in} L=0.13u",
+            ).replace(
+                "M2 outN inN sourceN 0 ctle_nmos W={W_in} L=0.13u",
+                "X2 outN inN sourceN 0 sg13_lv_nmos W={W_in} L=0.13u",
+            ).replace(
+                ".model ctle_nmos nmos level=1 vto=0.45 kp=200u lambda=0.04 gamma=0.4 phi=0.7\n",
+                "",
+            )
         if transient:
             rendered = rendered.replace("{VINP}", self._prbs_source(False))
             rendered = rendered.replace("{VINN}", self._prbs_source(True))
@@ -146,11 +160,17 @@ class SpiceEvaluator:
         input_path = stem.with_suffix(".sp")
         output_path = stem.with_suffix(".out")
         input_path.write_text(netlist, encoding="utf-8")
+        if self.osdi_model_paths:
+            (stem.parent / ".spiceinit").write_text(
+                "\n".join(f"osdi '{path}'" for path in self.osdi_model_paths) + "\n",
+                encoding="utf-8",
+            )
         completed = subprocess.run(
             [self.ngspice_binary, "-b", "-o", str(output_path), str(input_path)],
             capture_output=True,
             text=True,
             check=False,
+            cwd=stem.parent,
         )
         output = output_path.read_text(encoding="utf-8") if output_path.exists() else completed.stdout + completed.stderr
         if completed.returncode != 0 or re.search(r"matrix is singular|fatal error|error", output, re.IGNORECASE):
@@ -219,7 +239,7 @@ class SpiceEvaluator:
         if not rows:
             raise ValueError("missing AC data")
         data = np.asarray(rows, dtype=float)
-        if np.any(data[:, 0] <= 0):
+        if np.any(~np.isfinite(data)) or np.any(data[:, 0] <= 0) or np.any(np.diff(data[:, 0]) <= 0):
             raise ValueError("invalid AC frequency")
         return data[:, 0], 20.0 * np.log10(np.abs(data[:, 1] + 1j * data[:, 2]))
 
@@ -241,4 +261,6 @@ class SpiceEvaluator:
         if not rows:
             raise ValueError("missing transient data")
         data = np.asarray(rows, dtype=float)
+        if np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) <= 0):
+            raise ValueError("invalid transient time")
         return data[:, 0], data[:, 1] - data[:, 2]

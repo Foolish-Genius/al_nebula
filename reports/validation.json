@@ -1,6 +1,7 @@
 {
   "dc_gain": 11.091341698948739,
   "dc_valid": true,
+  "error": null,
   "eye_height_v": 1.8644584249999998,
   "model_source": "ngspice_generic_level1",
   "nyquist_gain": 18.689059975116663,
