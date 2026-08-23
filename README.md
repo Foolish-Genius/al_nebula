@@ -9,10 +9,11 @@ Phase 1 of AutoAnalog-RL: a parameterized IHP sg13g2 CTLE netlist, fail-fast ngs
 - `rl/specs.py` owns measurable targets and normalized constraint violations.
 - `rl/reward.py` owns reward shaping and configurable weights.
 - `rl/environment.py` owns the Gym-style `reset`/`step` contract.
+- `rl/pvt.py` owns the deterministic 45-corner PVT verification matrix.
 
-The next high-value stages are transient PRBS and eye metrics, explicit PVT corner
-decks, then SAC integration. The simulator adapter should remain unchanged while
-those stages are added.
+The next high-value stages are transient PRBS and eye metrics, PVT-aware simulator
+injection, then SAC integration. The simulator adapter should remain unchanged
+while the scheduling and optimization layers are added.
 
 ## Run
 

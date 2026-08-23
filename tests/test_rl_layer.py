@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from rl.environment import CtleEnvironment
+from rl.pvt import PvtCorner, all_pvt_corners
 from rl.reward import CtleReward
 from rl.specs import CtleSpecifications
 
@@ -59,3 +60,16 @@ def test_environment_returns_gym_style_transition():
     assert terminated is True
     assert truncated is False
     assert info["metrics"]["dc_valid"] is True
+
+
+def test_pvt_matrix_contains_45_unique_corners():
+    corners = all_pvt_corners()
+    assert len(corners) == 45
+    assert len({corner.name for corner in corners}) == 45
+    assert corners[0].vdd == pytest.approx(1.14)
+    assert corners[-1].vdd == pytest.approx(1.26)
+
+
+def test_pvt_rejects_unsupported_conditions():
+    with pytest.raises(ValueError):
+        PvtCorner("XX", 1.0, 25.0)
