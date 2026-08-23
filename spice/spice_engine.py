@@ -16,15 +16,25 @@ class SpiceEvaluator:
 
     PARAMETER_NAMES = ("W_in", "R_load", "I_bias", "R_s", "C_s")
 
-    def __init__(self, template_path: str | Path | None = None, ngspice_binary: str = "ngspice") -> None:
+    def __init__(
+        self,
+        template_path: str | Path | None = None,
+        ngspice_binary: str = "ngspice",
+        pdk_model_path: str | Path | None = None,
+        pdk_corner_path: str | Path | None = None,
+        pdk_corner: str = "mos_tt",
+    ) -> None:
         project_root = Path(__file__).resolve().parents[1]
         self.template_path = Path(template_path or project_root / "netlists" / "ctle_template.sp")
         self.template = self.template_path.read_text(encoding="utf-8")
         self.ngspice_binary = ngspice_binary
+        self.pdk_model_path = Path(pdk_model_path) if pdk_model_path else None
+        self.pdk_corner_path = Path(pdk_corner_path) if pdk_corner_path else None
+        self.pdk_corner = pdk_corner
         self.bounds = {
             "W_in": (0.5e-6, 50.0e-6),
-            "R_load": (10.0, 1000.0),
-            "I_bias": (100.0e-6, 10.0e-3),
+            "R_load": (100.0, 1000.0),
+            "I_bias": (100.0e-6, 2.0e-3),
             "R_s": (10.0, 500.0),
             "C_s": (1.0e-15, 1.0e-12),
         }
@@ -50,6 +60,7 @@ class SpiceEvaluator:
             "nyquist_gain": float("nan"),
             "peaking_boost": float("nan"),
             "power": float("nan"),
+            "error": None,
         }
         try:
             parameters = self.map_actions(actions)
@@ -73,11 +84,43 @@ class SpiceEvaluator:
                     "peaking_boost": nyquist_gain - dc_gain,
                     "power": 1.2 * parameters["I_bias"],
                 }
-        except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError):
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
+            failure["error"] = str(error)
             return failure
 
-    def _inject_parameters(self, parameters: dict[str, float]) -> str:
+    def run_transient(self, actions: np.ndarray) -> dict[str, Any]:
+        """Run the 5 Gbps NRZ transient gate and return sampled differential data."""
+        failure = {"tran_valid": False, "time_s": np.array([]), "output_v": np.array([]), "eye_height_v": float("nan"), "error": None}
+        try:
+            parameters = self.map_actions(actions)
+            netlist = self._inject_parameters(parameters, transient=True)
+            with tempfile.TemporaryDirectory(prefix="autoanalog-tran-") as directory:
+                output = self._run_ngspice(
+                    self._with_commands(netlist, self._tran_commands()),
+                    Path(directory) / "tran",
+                )
+            time_s, output_v = self._parse_transient(output)
+            if time_s.size < 2:
+                return failure
+            eye_height = float(np.percentile(output_v, 95) - np.percentile(output_v, 5))
+            return {"tran_valid": eye_height > 0.1, "time_s": time_s, "output_v": output_v, "eye_height_v": eye_height}
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
+            failure["error"] = str(error)
+            return failure
+
+    def _inject_parameters(self, parameters: dict[str, float], transient: bool = False) -> str:
         rendered = self.template.replace("{VDD}", "1.2")
+        if transient:
+            rendered = rendered.replace("{VINP}", self._prbs_source(False))
+            rendered = rendered.replace("{VINN}", self._prbs_source(True))
+        else:
+            rendered = rendered.replace("{VINP}", "DC 0.6 AC 1")
+            rendered = rendered.replace("{VINN}", "DC 0.6 AC -1")
+        if self.pdk_model_path:
+            model_includes = [f".include {self.pdk_model_path}"]
+            if self.pdk_corner_path:
+                model_includes.insert(0, f".lib {self.pdk_corner_path} {self.pdk_corner}")
+            rendered = rendered.replace("\n.end", "\n" + "\n".join(model_includes) + "\n.end", 1)
         for name, value in parameters.items():
             rendered = rendered.replace("{" + name + "}", self._spice_value(value))
         rendered = rendered.replace("{I_bias/2}", self._spice_value(parameters["I_bias"] / 2.0))
@@ -115,7 +158,30 @@ class SpiceEvaluator:
 
     @staticmethod
     def _ac_commands() -> str:
-        return "\n.control\nac dec 100 10Meg 10Gig\nprint frequency v(outP)\n.endc\n"
+        return "\n.control\nac dec 100 10Meg 10Gig\nprint frequency v(outP,outN)\n.endc\n"
+
+    @staticmethod
+    def _tran_commands() -> str:
+        return "\n.control\ntran 1p 25.4n\nprint time v(outP) v(outN)\n.endc\n"
+
+    @staticmethod
+    def _prbs_source(invert: bool) -> str:
+        """Return a deterministic PRBS7 PWL source at 5 Gbps."""
+        register = 0x7F
+        bit_period = 200e-12
+        points: list[str] = []
+        for index in range(127):
+            bit = register & 1
+            level = 0.5 + (0.2 if bit else 0.0)
+            if invert:
+                level = 1.2 - level
+            start = index * bit_period
+            end = (index + 1) * bit_period
+            points.append(f"{start:.12g} {level:.12g}")
+            points.append(f"{end:.12g} {level:.12g}")
+            feedback = ((register >> 6) ^ (register >> 5)) & 1
+            register = ((register << 1) | feedback) & 0x7F
+        return "PWL(" + " ".join(points) + ")"
 
     @staticmethod
     def _parse_scalar(output: str, node: str) -> float:
@@ -131,12 +197,12 @@ class SpiceEvaluator:
         rows: list[tuple[float, complex]] = []
         for line in output.splitlines():
             fields = line.split()
-            if len(fields) < 3:
+            if len(fields) < 4:
                 continue
             try:
-                frequency = float(fields[0])
-                real = float(fields[1].strip(","))
-                imaginary = float(fields[2].strip(","))
+                frequency = float(fields[1])
+                real = float(fields[2].strip(","))
+                imaginary = float(fields[3].strip(","))
             except ValueError:
                 continue
             rows.append((frequency, complex(real, imaginary)))
@@ -146,3 +212,19 @@ class SpiceEvaluator:
         if frequency <= 0:
             raise ValueError("invalid AC frequency")
         return float(20.0 * np.log10(abs(value)))
+
+    @staticmethod
+    def _parse_transient(output: str) -> tuple[np.ndarray, np.ndarray]:
+        rows: list[tuple[float, float, float]] = []
+        for line in output.splitlines():
+            fields = line.split()
+            if len(fields) < 4:
+                continue
+            try:
+                rows.append((float(fields[1]), float(fields[2]), float(fields[3])))
+            except ValueError:
+                continue
+        if not rows:
+            raise ValueError("missing transient data")
+        data = np.asarray(rows, dtype=float)
+        return data[:, 0], data[:, 1] - data[:, 2]

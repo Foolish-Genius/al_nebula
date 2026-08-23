@@ -23,4 +23,13 @@ Use an environment with `numpy`, `pytest`, and the `ngspice` executable availabl
 python -m pytest
 ```
 
+The IHP Open PDK is installed locally at `/home/hp/ihp-open-pdk` (revision
+`22f2a25`). Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
+binary does not support. The default runner therefore uses an explicit ngspice
+Level-1 model to validate the architecture and data flow; reports label this
+model source clearly. Use a PSP-capable simulator such as Xyce for final PDK
+measurements.
+Run `python scripts/run_validation.py` to regenerate the complete artifact set;
+the PVT CSV lists all 45 corners and marks unavailable simulator runs explicitly.
+
 `SpiceEvaluator.run_simulation()` currently implements the Phase 1 `.op` and `.ac` gates. The transient PRBS gate remains a later pipeline stage.

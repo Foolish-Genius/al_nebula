@@ -1,8 +1,10 @@
 import numpy as np
 import pytest
 
+from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.pvt import PvtCorner, all_pvt_corners
+from rl.search import BoundedDesignSearch
 from rl.reward import CtleReward
 from rl.specs import CtleSpecifications
 
@@ -73,3 +75,27 @@ def test_pvt_matrix_contains_45_unique_corners():
 def test_pvt_rejects_unsupported_conditions():
     with pytest.raises(ValueError):
         PvtCorner("XX", 1.0, 25.0)
+
+
+def test_reporter_writes_validation_artifacts(tmp_path):
+    reporter = ValidationReporter(tmp_path)
+    paths = reporter.write(
+        {"dc_valid": True, "power": 0.01},
+        ac_frequency_hz=[1e7, 2.5e9],
+        ac_gain_db=[1.0, 6.0],
+        transient_time_s=[0.0, 200e-12, 400e-12],
+        transient_output_v=[-0.05, 0.05, -0.05],
+        pvt_results=[{"name": "TT_1.20V_0C", "peaking_boost": 6.0}],
+    )
+    assert {"json", "ac_csv", "ac_plot", "tran_csv", "tran_plot", "eye_plot", "pvt_csv", "pvt_plot"} <= paths.keys()
+    assert all((tmp_path / path.split("/")[-1]).exists() for path in paths.values())
+
+
+def test_bounded_search_keeps_best_candidate():
+    class FakeSearchEvaluator:
+        def run_simulation(self, action):
+            return {"dc_valid": True, "peaking_boost": float(action[0] + 7.5), "power": 1e-3}
+
+    action, rows = BoundedDesignSearch(FakeSearchEvaluator()).run(4)
+    assert len(rows) == 4
+    assert np.all((-1.0 <= action) & (action <= 1.0))

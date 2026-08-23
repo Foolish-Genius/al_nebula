@@ -8,8 +8,8 @@ def test_map_actions_hits_physical_bounds():
     evaluator = SpiceEvaluator()
     mapped = evaluator.map_actions(np.array([-1.0, 0.0, 1.0, -1.0, 1.0]))
     assert mapped["W_in"] == pytest.approx(0.5e-6)
-    assert mapped["R_load"] == pytest.approx(505.0)
-    assert mapped["I_bias"] == pytest.approx(10e-3)
+    assert mapped["R_load"] == pytest.approx(550.0)
+    assert mapped["I_bias"] == pytest.approx(2e-3)
     assert mapped["R_s"] == pytest.approx(10.0)
     assert mapped["C_s"] == pytest.approx(1e-12)
 

@@ -1,0 +1,18 @@
+{
+  "dc_gain": 4.80277430147631,
+  "dc_valid": true,
+  "eye_height_v": 0.7618749999999999,
+  "model_source": "ngspice_generic_level1",
+  "nyquist_gain": 12.481728795468854,
+  "peaking_boost": 7.678954493992544,
+  "power": 0.00069,
+  "selected_action": [
+    -0.5,
+    0.25,
+    -0.5,
+    0.5,
+    0.0
+  ],
+  "tran_valid": true,
+  "transient_error": null
+}
