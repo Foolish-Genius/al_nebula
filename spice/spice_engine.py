@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from rl.dfe import optimize_one_tap
+
 
 class SpiceEvaluator:
     """Map RL actions to legal device values and run gated ngspice analyses."""
@@ -380,13 +382,15 @@ class SpiceEvaluator:
             # Use the midpoint between the two levels as the eye center.
             threshold = (low_level + high_level) / 2.0
 
-            # Determine where the waveform is sufficiently far from
-            # the threshold to represent an open eye.
-            amplitude = (high_level - low_level) / 2.0
-            eye_margin = 0.10 * amplitude
-
-            upper_limit = threshold + eye_margin
-            lower_limit = threshold - eye_margin
+            symbol_centers = np.arange(
+                time_s.min() + 0.5 * ui,
+                time_s.max(),
+                ui,
+            )
+            center_indices = np.searchsorted(time_s, symbol_centers).clip(max=time_s.size - 1)
+            center_values = output_v[center_indices]
+            center_threshold = float(np.median(center_values))
+            center_decisions = np.where(center_values >= center_threshold, 1.0, -1.0)
 
             # Fold the waveform into one UI.
             phase = np.mod(
@@ -416,13 +420,16 @@ class SpiceEvaluator:
                 if not np.any(mask):
                     continue
 
+                symbol_indices = np.floor((time_s[valid][mask] - (time_s.min() + 0.5 * ui)) / ui).astype(int)
+                symbol_indices = symbol_indices.clip(0, center_decisions.size - 1)
                 values = measurement_v[mask]
-
-                # Eye is considered open if both logical levels
-                # remain separated at this phase.
-                eye_open[index] = (
-                    np.max(values) > upper_limit
-                    and np.min(values) < lower_limit
+                labels = center_decisions[symbol_indices]
+                high = values[labels > 0]
+                low = values[labels < 0]
+                eye_open[index] = bool(
+                    high.size > 0
+                    and low.size > 0
+                    and np.percentile(high, 5) > np.percentile(low, 95)
                 )
 
             if np.any(eye_open):
@@ -434,6 +441,7 @@ class SpiceEvaluator:
 
             eye_height_pass = eye_height > 0.10
             eye_width_pass = eye_width_ui > 0.40
+            dfe = optimize_one_tap(center_values - center_threshold)
 
             return {
                 "tran_valid": eye_height_pass and eye_width_pass,
@@ -443,6 +451,10 @@ class SpiceEvaluator:
                 "eye_width_ui": eye_width_ui,
                 "eye_height_pass": eye_height_pass,
                 "eye_width_pass": eye_width_pass,
+                "dfe_tap": dfe["tap"],
+                "dfe_eye_height_v": dfe["eye_height_v"],
+                "dfe_output_v": dfe["corrected"],
+                "dfe_time_s": symbol_centers,
                 "error": None,
             }
 

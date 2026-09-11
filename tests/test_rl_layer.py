@@ -3,6 +3,7 @@ import pytest
 
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
+from rl.dfe import apply_one_tap_dfe, optimize_one_tap
 from rl.pvt import PvtCorner, all_pvt_corners
 from rl.search import BoundedDesignSearch
 from rl.reward import CtleReward
@@ -112,3 +113,15 @@ def test_bounded_search_keeps_best_candidate():
     action, rows = BoundedDesignSearch(FakeSearchEvaluator()).run(4)
     assert len(rows) == 4
     assert np.all((-1.0 <= action) & (action <= 1.0))
+
+
+def test_one_tap_dfe_corrects_previous_decision_contribution():
+    corrected, decisions = apply_one_tap_dfe(np.array([-1.0, 1.4, -1.0, 1.4]), tap=0.4)
+    assert decisions.tolist() == [-1.0, 1.0, -1.0, 1.0]
+    assert corrected[1] == pytest.approx(1.8)
+
+
+def test_one_tap_search_returns_finite_tap_and_eye_metric():
+    result = optimize_one_tap(np.tile([-1.0, 1.3, -1.0, 1.3], 8))
+    assert -0.5 <= result["tap"] <= 0.5
+    assert np.isfinite(result["eye_height_v"])

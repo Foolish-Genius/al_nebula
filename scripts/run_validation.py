@@ -34,6 +34,11 @@ def main(output_dir: str = "reports") -> None:
         "error": ac_result.get("error"),
         "tran_valid": transient_result["tran_valid"],
         "eye_height_v": transient_result["eye_height_v"],
+        "eye_width_ui": transient_result.get("eye_width_ui"),
+        "eye_height_pass": transient_result.get("eye_height_pass"),
+        "eye_width_pass": transient_result.get("eye_width_pass"),
+        "dfe_tap": transient_result.get("dfe_tap"),
+        "dfe_eye_height_v": transient_result.get("dfe_eye_height_v"),
         "transient_error": transient_result.get("error"),
         "model_source": "ngspice_generic_level1",
         "selected_action": action.tolist(),
@@ -53,6 +58,7 @@ def main(output_dir: str = "reports") -> None:
         pvt_results=pvt_results,
     )
     paths.update(reporter.write_search(search_rows))
+    paths.update(reporter.write_dfe(transient_result.get("dfe_time_s", transient_result["time_s"]), transient_result.get("dfe_output_v", transient_result["output_v"])))
     print(metrics)
     print(paths)
 
