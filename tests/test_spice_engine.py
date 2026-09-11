@@ -73,6 +73,15 @@ def test_osdi_injection_selects_ihp_subcircuits(tmp_path):
     assert ".model ctle_nmos" not in rendered
 
 
+def test_pvt_process_maps_to_ihp_library_corner(tmp_path):
+    evaluator = SpiceEvaluator(
+        pdk_model_path=tmp_path / "model.lib",
+        pdk_corner_path=tmp_path / "corner.lib",
+    )
+    rendered = evaluator._inject_parameters(evaluator.map_actions(np.zeros(5)), pvt_process="SS")
+    assert ".lib" in rendered and "mos_ss" in rendered
+
+
 def test_successful_transient_result_has_error_field():
     class FakeEvaluator(SpiceEvaluator):
         def _run_ngspice(self, netlist, stem):

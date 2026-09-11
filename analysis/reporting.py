@@ -109,18 +109,32 @@ class ValidationReporter:
 
     def _plot_eye(self, time_s: Sequence[float], output_v: Sequence[float]) -> str:
         plot = self._pyplot()
-        figure, axis = plot.subplots(figsize=(6, 4.5))
+        figure, axis = plot.subplots(figsize=(7, 5))
         time = np.asarray(time_s)
         values = np.asarray(output_v)
         ui = 200e-12
         if time.size and values.size:
-            phase = np.mod(time - time.min(), ui) / ui
-            order = np.argsort(phase)
-            axis.scatter(phase[order], values[order], s=1, color="tab:blue", alpha=0.16, rasterized=True)
-            axis.set_xlim(0.0, 1.0)
+            # Overlay adjacent 2-UI windows. This is the conventional eye
+            # view: every transition is aligned to the same unit-interval grid.
+            start = time.min()
+            window = 2.0 * ui
+            segment_count = int(np.floor((time.max() - start - window) / ui))
+            for index in range(max(0, segment_count)):
+                segment_start = start + index * ui
+                mask = (time >= segment_start) & (time < segment_start + window)
+                if np.count_nonzero(mask) >= 2:
+                    axis.plot(
+                        (time[mask] - segment_start) / ui,
+                        values[mask],
+                        color="tab:blue",
+                        alpha=0.08,
+                        linewidth=0.6,
+                    )
+            axis.set_xlim(0.0, 2.0)
+            axis.set_xticks((0.0, 0.5, 1.0, 1.5, 2.0))
         else:
             axis.text(0.5, 0.5, "no transient data\n(gate failed)", ha="center", va="center", transform=axis.transAxes)
-        axis.set(xlabel="unit intervals", ylabel="differential output (V)", title="eye diagram")
+        axis.set(xlabel="unit intervals (2 UI overlay)", ylabel="differential output (V)", title="CTLE eye diagram")
         axis.grid(True, alpha=0.25)
         return self._save_plot(figure, "eye_diagram.png")
 
