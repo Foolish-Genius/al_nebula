@@ -120,3 +120,25 @@ def test_run_pvt_returns_explicit_corner_statuses():
     rows = FakePvtEvaluator().run_pvt(np.zeros(5), (Corner(),))
     assert rows[0]["pvt_pass"] is True
     assert rows[0]["status"] == "pass"
+
+
+def test_generic_model_is_skewed_per_process_corner():
+    evaluator = SpiceEvaluator()
+    parameters = evaluator.map_actions(np.zeros(5))
+    rendered = {
+        corner: evaluator._inject_parameters(parameters, pvt_process=corner)
+        for corner in ("TT", "SS", "FF", "SF", "FS")
+    }
+    assert len(set(rendered.values())) == 5
+    assert "vto=0.45 kp=0.0002" in rendered["TT"]
+    assert "vto=0.51 kp=0.00017" in rendered["SS"]
+    assert rendered["TT"] == evaluator._inject_parameters(parameters)
+    with pytest.raises(ValueError):
+        evaluator._inject_parameters(parameters, pvt_process="XX")
+
+
+def test_pdk_corner_names_map_to_ihp_sections(tmp_path):
+    evaluator = SpiceEvaluator(pdk_model_path=tmp_path / "sg13g2.lib", pdk_corner_path=tmp_path / "corner.lib")
+    parameters = evaluator.map_actions(np.zeros(5))
+    assert "corner.lib mos_ss" in evaluator._inject_parameters(parameters, pvt_process="SS")
+    assert "corner.lib mos_tt" in evaluator._inject_parameters(parameters)

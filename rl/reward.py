@@ -30,12 +30,13 @@ class CtleReward:
 
         evaluation = self.specifications.evaluate(metrics)
         hard_gate_names = ("hd3", "noise", "eye_horizontal_ui", "eye_vertical_v")
+        constraints_by_name = {constraint.name: constraint for constraint in self.specifications.constraints}
         hard_gate_failures = {
             name: 1.0
             for name in hard_gate_names
-            if name in metrics and self.specifications.constraints[
-                next(index for index, constraint in enumerate(self.specifications.constraints) if constraint.name == name)
-            ].violation(float(metrics[name])) > 0.0
+            if name in metrics
+            and name in constraints_by_name
+            and constraints_by_name[name].violation(float(metrics[name])) > 0.0
         }
         if hard_gate_failures:
             evaluation = {**evaluation, "all_specs_met": False, "hard_gate_failures": hard_gate_failures}

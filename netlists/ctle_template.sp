@@ -21,7 +21,8 @@ RloadN vdd outN {R_load}
 * A common tail current establishes the differential-pair operating point.
 Ibias tail 0 DC {I_bias}
 
-* Generic ngspice fallback model. The IHP PSP deck is selected by a separate backend.
-.model ctle_nmos nmos level=1 vto=0.45 kp=200u lambda=0.04 gamma=0.4 phi=0.7
+* Generic ngspice fallback model; VTO and KP are shifted per process corner by SpiceEvaluator.
+* The IHP PSP deck is selected by a separate backend.
+.model ctle_nmos nmos level=1 vto={VTO} kp={KP} lambda=0.04 gamma=0.4 phi=0.7
 
 .end

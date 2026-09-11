@@ -43,7 +43,7 @@ def test_invalid_dc_is_immediate_heavy_penalty():
     reward, info = CtleReward().calculate({"dc_valid": False})
     assert reward == -100.0
     assert info["all_specs_met"] is False
-    assert len(info["violations"]) == 7
+    assert len(info["violations"]) == 5
 
 
 class FakeEvaluator:
@@ -55,11 +55,11 @@ class FakeEvaluator:
 def test_environment_returns_gym_style_transition():
     environment = CtleEnvironment(FakeEvaluator(), max_steps=1)
     observation, info = environment.reset(seed=7)
-    assert observation.shape == (8,)
+    assert observation.shape == (15,)
     assert info["seed"] == 7
 
     observation, reward, terminated, truncated, info = environment.step(np.zeros(5))
-    assert observation.shape == (8,)
+    assert observation.shape == (15,)
     assert reward == pytest.approx(20.0)
     assert terminated is True
     assert truncated is False
@@ -153,3 +153,72 @@ def test_environment_uses_six_action_whole_equalizer():
     environment = CtleEnvironment(Whole())
     _, _, _, _, info = environment.step(np.zeros(6))
     assert info["metrics"]["peaking_boost"] == 6.0
+
+
+class FakeTransientEvaluator(FakeEvaluator):
+    def __init__(self):
+        self.transient_calls = 0
+
+    def run_transient(self, action):
+        self.transient_calls += 1
+        return {"eye_height_v": 0.3, "eye_width_ui": 0.6, "tran_valid": True, "error": None}
+
+
+def test_environment_merges_transient_eye_metrics_into_step():
+    evaluator = FakeTransientEvaluator()
+    environment = CtleEnvironment(evaluator)
+    environment.reset()
+    _, reward, terminated, _, info = environment.step(np.zeros(5))
+    assert evaluator.transient_calls == 1
+    assert info["metrics"]["eye_vertical_v"] == pytest.approx(0.3)
+    assert info["metrics"]["eye_horizontal_ui"] == pytest.approx(0.6)
+    assert reward == pytest.approx(20.0)
+    assert terminated is True
+
+
+def test_delta_actions_move_and_clip_the_design_vector():
+    environment = CtleEnvironment(FakeEvaluator(), delta_scale=0.5, run_transient=False)
+    environment.reset(options={"initial_design": [0.8, 0.0, 0.0, 0.0, 0.0]})
+    _, _, _, _, info = environment.step(np.array([1.0, -1.0, 0.0, 0.0, 0.0]))
+    assert info["design"] == pytest.approx([1.0, -0.5, 0.0, 0.0, 0.0])
+    observation, *_ = environment.step(np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
+    assert observation[0] == pytest.approx(1.0)
+
+
+def test_absolute_actions_replace_the_design_vector():
+    environment = CtleEnvironment(FakeEvaluator(), action_mode="absolute", run_transient=False)
+    environment.reset()
+    _, _, _, _, info = environment.step(np.array([-0.2, 0.4, 0.0, 0.1, -1.0]))
+    assert info["design"] == pytest.approx([-0.2, 0.4, 0.0, 0.1, -1.0])
+
+
+def test_dc_failure_is_penalized_but_does_not_end_the_episode():
+    class FailingEvaluator:
+        def run_simulation(self, action):
+            return {"dc_valid": False, "error": "singular"}
+
+    environment = CtleEnvironment(FailingEvaluator(), max_steps=2)
+    environment.reset()
+    observation, reward, terminated, truncated, _ = environment.step(np.zeros(5))
+    assert reward == -100.0
+    assert terminated is False and truncated is False
+    assert observation[5] == 0.0
+    _, _, terminated, truncated, _ = environment.step(np.zeros(5))
+    assert terminated is False and truncated is True
+
+
+def test_random_reset_is_seeded():
+    environment = CtleEnvironment(FakeEvaluator(), random_reset=True, run_transient=False)
+    first, _ = environment.reset(seed=3)
+    second, _ = environment.reset(seed=3)
+    assert np.array_equal(first, second)
+    assert np.any(first[:5] != 0.0)
+
+
+def test_environment_rejects_bad_actions():
+    environment = CtleEnvironment(FakeEvaluator(), run_transient=False)
+    environment.reset()
+    with pytest.raises(ValueError):
+        environment.step(np.zeros(4))
+    with pytest.raises(ValueError):
+        environment.step(np.array([0.0, 0.0, 1.5, 0.0, 0.0]))

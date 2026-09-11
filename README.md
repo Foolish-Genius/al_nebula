@@ -8,12 +8,22 @@ Phase 1 of AutoAnalog-RL: a parameterized IHP sg13g2 CTLE netlist, fail-fast ngs
 - `spice/` owns simulator execution, parsing, and DC/AC gating.
 - `rl/specs.py` owns measurable targets and normalized constraint violations.
 - `rl/reward.py` owns reward shaping and configurable weights.
-- `rl/environment.py` owns the Gym-style `reset`/`step` contract.
-- `rl/pvt.py` owns the deterministic 45-corner PVT verification matrix.
+- `rl/environment.py` owns the Gym-style `reset`/`step` contract. State is the
+  normalized design vector; actions are deltas by default (`action_mode="absolute"`
+  to replace it). Each step runs the DC/AC gate and, on success, the transient
+  PRBS gate so eye metrics reach the reward.
+- `rl/pvt.py` owns the deterministic 45-corner PVT verification matrix. With the
+  generic Level-1 model, `SpiceEvaluator.GENERIC_PROCESS_MODELS` skews `vto`/`kp`
+  per process corner (placeholder values, NMOS-only); with the PDK, corner names
+  map to the `mos_tt`/`mos_ss`/... sections of `cornerMOSlv.lib`.
 
 The pre-ML pipeline is complete through CTLE sizing, IHP PSP103 simulation,
 PRBS transient/eye validation, behavioral one-tap DFE, HD3/noise/area hooks, and
 45-corner PVT. SAC/RL training is the next phase.
+
+HD3 and noise targets are recorded in `CtleSpecifications`; the linearity and
+noise gates in `run_validation.py` report them. The simulator adapter should
+remain unchanged while the scheduling and optimization layers are added.
 
 ## Run
 
