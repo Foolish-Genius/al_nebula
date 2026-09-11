@@ -4,6 +4,7 @@ import pytest
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.dfe import apply_one_tap_dfe, optimize_one_tap
+from rl.equalizer import EqualizerEvaluator
 from rl.pvt import PvtCorner, all_pvt_corners
 from rl.search import BoundedDesignSearch
 from rl.reward import CtleReward
@@ -125,3 +126,19 @@ def test_one_tap_search_returns_finite_tap_and_eye_metric():
     result = optimize_one_tap(np.tile([-1.0, 1.3, -1.0, 1.3], 8))
     assert -0.5 <= result["tap"] <= 0.5
     assert np.isfinite(result["eye_height_v"])
+
+
+def test_equalizer_action_controls_ctle_and_dfe_tap():
+    class FakeSpice:
+        def run_simulation(self, action):
+            assert action.shape == (5,)
+            return {"dc_valid": True, "peaking_boost": 6.0, "power": 1e-3}
+
+        def run_transient(self, action):
+            time = np.arange(0.0, 4.0e-9, 200e-12)
+            values = np.tile([-1.0, 1.2], 10)[:time.size]
+            return {"tran_valid": True, "time_s": time, "output_v": values}
+
+    result = EqualizerEvaluator(FakeSpice()).run(np.zeros(6))
+    assert result["equalizer_valid"] is True
+    assert result["equalizer_tap"] == pytest.approx(0.0)

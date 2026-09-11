@@ -49,4 +49,9 @@ python scripts/run_validation.py --model-source ihp \
 This uses OpenVAF-compiled `psp103.osdi` models with the sg13g2 MOS corner
 libraries. The generic Level-1 path remains available for fast debugging.
 
+The current real-IHP run passes DC, AC peaking, eye, power, area estimate, and
+all 45 PVT corners. HD3 and integrated noise are now measured explicitly but
+currently fail their strict targets; the next optimization must target those
+failures.
+
 `SpiceEvaluator.run_simulation()` currently implements the Phase 1 `.op` and `.ac` gates. The transient PRBS gate remains a later pipeline stage.

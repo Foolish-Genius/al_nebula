@@ -2,6 +2,7 @@
 
 from .environment import CtleEnvironment
 from .dfe import apply_one_tap_dfe, eye_height, optimize_one_tap
+from .equalizer import EqualizerEvaluator
 from .pvt import PvtCorner, all_pvt_corners
 from .reward import CtleReward
 from .search import BoundedDesignSearch
@@ -13,6 +14,7 @@ __all__ = [
 	"apply_one_tap_dfe",
 	"eye_height",
 	"optimize_one_tap",
+	"EqualizerEvaluator",
 	"CtleReward",
 	"CtleSpecifications",
 	"BoundedDesignSearch",
