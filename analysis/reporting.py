@@ -71,6 +71,16 @@ class ValidationReporter:
         axis.grid(True, alpha=0.25)
         return {"search_csv": str(path), "search_plot": self._save_plot(figure, "search_convergence.png")}
 
+    def write_dfe(self, time_s: Sequence[float], output_v: Sequence[float]) -> dict[str, str]:
+        """Persist the post-CTLE one-tap DFE waveform and a comparison plot."""
+        csv_path = self._write_pairs("dfe_transient.csv", "time_s", "dfe_output_v", time_s, output_v)
+        plot = self._pyplot()
+        figure, axis = plot.subplots(figsize=(8, 4.5))
+        axis.plot(np.asarray(time_s) * 1e9, output_v, color="tab:green")
+        axis.set(xlabel="time (ns)", ylabel="DFE output (V)", title="one-tap DFE corrected waveform")
+        axis.grid(True, alpha=0.25)
+        return {"dfe_csv": csv_path, "dfe_plot": self._save_plot(figure, "dfe_transient.png")}
+
     def _write_pairs(self, filename: str, x_name: str, y_name: str, x: Sequence[float], y: Sequence[float]) -> str:
         path = self.output_dir / filename
         with path.open("w", newline="", encoding="utf-8") as handle:
@@ -104,10 +114,10 @@ class ValidationReporter:
         values = np.asarray(output_v)
         ui = 200e-12
         if time.size and values.size:
-            for start in np.arange(time.min(), time.max() - ui, ui):
-                mask = (time >= start) & (time < start + 2 * ui)
-                if mask.any():
-                    axis.plot((time[mask] - start) / ui, values[mask], color="tab:blue", alpha=0.12)
+            phase = np.mod(time - time.min(), ui) / ui
+            order = np.argsort(phase)
+            axis.scatter(phase[order], values[order], s=1, color="tab:blue", alpha=0.16, rasterized=True)
+            axis.set_xlim(0.0, 1.0)
         else:
             axis.text(0.5, 0.5, "no transient data\n(gate failed)", ha="center", va="center", transform=axis.transAxes)
         axis.set(xlabel="unit intervals", ylabel="differential output (V)", title="eye diagram")
