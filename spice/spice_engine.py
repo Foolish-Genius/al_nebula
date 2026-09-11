@@ -18,6 +18,27 @@ class SpiceEvaluator:
 
     PARAMETER_NAMES = ("W_in", "R_load", "I_bias", "R_s", "C_s")
 
+    # Generic Level-1 NMOS (vto [V], kp [A/V^2]) per process corner. These are
+    # placeholder skews so the PVT matrix exercises distinct devices before the
+    # IHP PSP deck is available; SF/FS carry only the NMOS half of the skew
+    # because the CTLE has no PMOS devices.
+    GENERIC_PROCESS_MODELS = {
+        "TT": (0.45, 200e-6),
+        "SS": (0.51, 170e-6),
+        "FF": (0.39, 230e-6),
+        "SF": (0.48, 185e-6),
+        "FS": (0.42, 215e-6),
+    }
+
+    # IHP sg13g2 cornerMOSlv.lib section names keyed by the rl.pvt corner names.
+    PDK_PROCESS_SECTIONS = {
+        "TT": "mos_tt",
+        "SS": "mos_ss",
+        "FF": "mos_ff",
+        "SF": "mos_sf",
+        "FS": "mos_fs",
+    }
+
     def __init__(
         self,
         template_path: str | Path | None = None,
@@ -536,6 +557,11 @@ class SpiceEvaluator:
         pvt_process: str | None = None,
         stimulus: str = "ac",
     ) -> str:
+        process = pvt_process if pvt_process is not None else "TT"
+
+        if process not in self.GENERIC_PROCESS_MODELS:
+            raise ValueError(f"unsupported process corner: {process}")
+
         rendered = self.template.replace(
             "{VDD}",
             self._spice_value(vdd),
@@ -548,9 +574,21 @@ class SpiceEvaluator:
             ).replace(
                 "M2 outN inN sourceN 0 ctle_nmos W={W_in} L=0.13u",
                 "X2 outN inN sourceN 0 sg13_lv_nmos W={W_in} L=0.13u",
-            ).replace(
-                ".model ctle_nmos nmos level=1 vto=0.45 kp=200u lambda=0.04 gamma=0.4 phi=0.7\n",
+            )
+            rendered = re.sub(
+                r"^\.model ctle_nmos .*\n",
                 "",
+                rendered,
+                flags=re.MULTILINE,
+            )
+        else:
+            vto, kp = self.GENERIC_PROCESS_MODELS[process]
+            rendered = rendered.replace(
+                "{VTO}",
+                self._spice_value(vto),
+            ).replace(
+                "{KP}",
+                self._spice_value(kp),
             )
 
         if stimulus == "hd3":
@@ -582,7 +620,7 @@ class SpiceEvaluator:
 
             if self.pdk_corner_path:
                 corner = (
-                    pvt_process
+                    self.PDK_PROCESS_SECTIONS[process]
                     if pvt_process is not None
                     else self.pdk_corner
                 )
