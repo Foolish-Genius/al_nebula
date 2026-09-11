@@ -23,8 +23,7 @@ Use an environment with `numpy`, `pytest`, and the `ngspice` executable availabl
 python -m pytest
 ```
 
-The IHP Open PDK is installed locally at `/home/hp/ihp-open-pdk` (revision
-`22f2a25`). Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
+The IHP Open PDK is installed locally. Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
 binary does not support as a built-in model. The PDK includes Verilog-A sources
 and an OpenVAF build script. The intended ngspice path is: install OpenVAF with
 its LLVM 21.1 runtime, run `libs.tech/verilog-a/openvaf-compile-va.sh`, then
