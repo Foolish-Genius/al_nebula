@@ -4,8 +4,12 @@
 .param VDD=1.2
 
 VDD vdd 0 {VDD}
-Vinp inP 0 {VINP}
-Vinn inN 0 {VINN}
+Vinp txP 0 {VINP}
+Vinn txN 0 {VINN}
+
+* Channel between the transmitter and the CTLE input, injected by SpiceEvaluator:
+* a direct connection for the DC/AC gates, a lossy RC ladder for the transient gate.
+{CHANNEL}
 
 * Differential NMOS input pair with source degeneration.
 M1 outP inP sourceP 0 ctle_nmos W={W_in} L=0.13u

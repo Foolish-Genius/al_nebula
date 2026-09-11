@@ -16,25 +16,26 @@ def valid_metrics():
     return {
         "dc_valid": True,
         "peaking_boost": 6.0,
-        "power": 10e-3,
-        "hd3": -35.0,
-        "noise": 1e-3,
-        "eye_horizontal_ui": 0.5,
-        "eye_vertical_v": 0.12,
+        "power": 1e-3,
+        "eye_horizontal_ui": 0.8,
+        "eye_vertical_v": 0.6,
     }
 
 
 def test_reward_adds_success_bonus_when_all_specs_pass():
     reward, info = CtleReward().calculate(valid_metrics())
-    assert reward == pytest.approx(20.0)
+    assert reward == pytest.approx(19.5)  # +20 bonus, -0.5 for 1 mW of the 2 mW budget
     assert info["all_specs_met"] is True
     assert info["weighted_cost"] == pytest.approx(0.0)
+    assert info["efficiency_cost"] == pytest.approx(0.5)
+    reward, _ = CtleReward(efficiency_weight=0.0).calculate(valid_metrics())
+    assert reward == pytest.approx(20.0)
 
 
 def test_reward_uses_normalized_constraint_violations():
     metrics = valid_metrics()
-    metrics["power"] = 18e-3
-    reward, info = CtleReward().calculate(metrics)
+    metrics["power"] = 2.4e-3
+    reward, info = CtleReward(efficiency_weight=0.0).calculate(metrics)
     assert reward == pytest.approx(-0.2)
     assert info["violations"]["power"] == pytest.approx(0.2)
     assert info["all_specs_met"] is False
@@ -61,7 +62,7 @@ def test_environment_returns_gym_style_transition():
 
     observation, reward, terminated, truncated, info = environment.step(np.zeros(5))
     assert observation.shape == (15,)
-    assert reward == pytest.approx(20.0)
+    assert reward == pytest.approx(19.5)
     assert terminated is True
     assert truncated is False
     assert info["metrics"]["dc_valid"] is True
@@ -162,7 +163,7 @@ class FakeTransientEvaluator(FakeEvaluator):
 
     def run_transient(self, action):
         self.transient_calls += 1
-        return {"eye_height_v": 0.3, "eye_width_ui": 0.6, "tran_valid": True, "error": None}
+        return {"eye_height_v": 0.6, "eye_width_ui": 0.8, "tran_valid": True, "error": None}
 
 
 def test_environment_merges_transient_eye_metrics_into_step():
@@ -171,9 +172,9 @@ def test_environment_merges_transient_eye_metrics_into_step():
     environment.reset()
     _, reward, terminated, _, info = environment.step(np.zeros(5))
     assert evaluator.transient_calls == 1
-    assert info["metrics"]["eye_vertical_v"] == pytest.approx(0.3)
-    assert info["metrics"]["eye_horizontal_ui"] == pytest.approx(0.6)
-    assert reward == pytest.approx(20.0)
+    assert info["metrics"]["eye_vertical_v"] == pytest.approx(0.6)
+    assert info["metrics"]["eye_horizontal_ui"] == pytest.approx(0.8)
+    assert reward == pytest.approx(19.5)
     assert terminated is True
 
 

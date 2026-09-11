@@ -31,6 +31,25 @@ class SpiceEvaluator:
         "FS": (0.42, 215e-6),
     }
 
+    # 5 Gbps NRZ: one unit interval is 200 ps. The transient gate sends the
+    # 127-bit PRBS7 pattern PRBS_PERIODS times and measures the final period.
+    UNIT_INTERVAL_S = 200e-12
+    PRBS_PERIODS = 2
+    TRANSIENT_STEP_S = 2e-12
+
+    # Lossy channel used only by the transient gate: two RC sections with a
+    # real pole each at CHANNEL_POLE_HZ, i.e. roughly -10 dB at the 2.5 GHz
+    # Nyquist frequency and -20 dB at 5 GHz, which is the loss slope of a
+    # PCIe Gen 2 class FR-4 trace. The DC/AC gates bypass it so peaking_boost
+    # still measures the CTLE alone.
+    CHANNEL_POLE_HZ = 1.7e9
+    CHANNEL_SECTION_OHMS = (50.0, 500.0)
+
+    # Eye acceptance used by run_transient's tran_valid flag; the RL reward
+    # applies CtleSpecifications, which should agree with these.
+    EYE_HEIGHT_MIN_V = 0.5
+    EYE_WIDTH_MIN_UI = 0.7
+
     # IHP sg13g2 cornerMOSlv.lib section names keyed by the rl.pvt corner names.
     PDK_PROCESS_SECTIONS = {
         "TT": "mos_tt",
@@ -339,13 +358,14 @@ class SpiceEvaluator:
         return results
 
     def run_transient(self, actions: np.ndarray) -> dict[str, Any]:
-        """Run the 5 Gbps NRZ transient gate and calculate eye-opening metrics."""
+        """Run the 5 Gbps PRBS7 transient through the lossy channel and measure the eye."""
         failure = {
             "tran_valid": False,
             "time_s": np.array([]),
             "output_v": np.array([]),
             "eye_height_v": float("nan"),
             "eye_width_ui": float("nan"),
+            "eye_center_ui": float("nan"),
             "eye_height_pass": False,
             "eye_width_pass": False,
             "error": None,
@@ -371,107 +391,30 @@ class SpiceEvaluator:
 
             time_s, output_v = self._parse_transient(output)
 
-            if time_s.size < 2:
-                return failure
-
-            # 5 Gbps => 1 UI = 200 ps
-            ui = 200e-12
-
-            # Ignore the first UI so that startup/transient effects
-            # do not dominate the eye measurement.
-            valid = time_s >= time_s.min() + ui
-
-            measurement_v = output_v[valid]
-
-            if measurement_v.size < 2:
-                return failure
-
-            # Current vertical eye-opening definition:
-            # 95th percentile - 5th percentile
-            eye_height = float(
-                np.percentile(measurement_v, 95)
-                - np.percentile(measurement_v, 5)
+            eye = self._eye_metrics(
+                time_s,
+                output_v,
+                self._prbs_bits(),
+                self.UNIT_INTERVAL_S,
+                periods=self.PRBS_PERIODS,
             )
 
-            # Determine the voltage range occupied by the waveform.
-            low_level = float(
-                np.percentile(measurement_v, 5)
-            )
+            eye_height_pass = eye["eye_height_v"] >= self.EYE_HEIGHT_MIN_V
+            eye_width_pass = eye["eye_width_ui"] >= self.EYE_WIDTH_MIN_UI
 
-            high_level = float(
-                np.percentile(measurement_v, 95)
-            )
-
-            # Use the midpoint between the two levels as the eye center.
-            threshold = (low_level + high_level) / 2.0
-
-            symbol_centers = np.arange(
-                time_s.min() + 0.5 * ui,
-                time_s.max(),
-                ui,
-            )
+            # Behavioural one-tap DFE on the UI-centre samples of the CTLE
+            # output; reports the tap that opens the eye the most.
+            ui = self.UNIT_INTERVAL_S
+            symbol_centers = np.arange(time_s.min() + 0.5 * ui, time_s.max(), ui)
             center_indices = np.searchsorted(time_s, symbol_centers).clip(max=time_s.size - 1)
             center_values = output_v[center_indices]
-            center_threshold = float(np.median(center_values))
-            center_decisions = np.where(center_values >= center_threshold, 1.0, -1.0)
-
-            # Fold the waveform into one UI.
-            phase = np.mod(
-                time_s[valid] - time_s.min(),
-                ui,
-            )
-
-            # For each phase position, determine whether the waveform
-            # has a valid eye opening.
-            phase_bins = np.linspace(
-                0.0,
-                ui,
-                201,
-            )
-
-            eye_open = np.zeros(
-                len(phase_bins) - 1,
-                dtype=bool,
-            )
-
-            for index in range(len(phase_bins) - 1):
-                mask = (
-                    (phase >= phase_bins[index])
-                    & (phase < phase_bins[index + 1])
-                )
-
-                if not np.any(mask):
-                    continue
-
-                symbol_indices = np.floor((time_s[valid][mask] - (time_s.min() + 0.5 * ui)) / ui).astype(int)
-                symbol_indices = symbol_indices.clip(0, center_decisions.size - 1)
-                values = measurement_v[mask]
-                labels = center_decisions[symbol_indices]
-                high = values[labels > 0]
-                low = values[labels < 0]
-                eye_open[index] = bool(
-                    high.size > 0
-                    and low.size > 0
-                    and np.percentile(high, 5) > np.percentile(low, 95)
-                )
-
-            if np.any(eye_open):
-                eye_width_ui = float(
-                    np.sum(eye_open) / len(eye_open)
-                )
-            else:
-                eye_width_ui = 0.0
-
-            eye_height_pass = eye_height > 0.10
-            eye_width_pass = eye_width_ui > 0.40
-            dfe = optimize_one_tap(center_values - center_threshold)
+            dfe = optimize_one_tap(center_values - float(np.median(center_values)))
 
             return {
                 "tran_valid": eye_height_pass and eye_width_pass,
                 "time_s": time_s,
                 "output_v": output_v,
-                "eye_height_v": eye_height,
-                "eye_width_ui": eye_width_ui,
+                **eye,
                 "eye_height_pass": eye_height_pass,
                 "eye_width_pass": eye_width_pass,
                 "dfe_tap": dfe["tap"],
@@ -550,6 +493,85 @@ class SpiceEvaluator:
         area_mm2 = 3.0 * width_um * length_um * 1e-6
         return {"area_mm2": area_mm2, "area_valid": bool(area_mm2 < 0.05), "area_method": "active_mos_geometry_estimate"}
 
+    @staticmethod
+    def _eye_metrics(
+        time_s: np.ndarray,
+        output_v: np.ndarray,
+        bits: np.ndarray,
+        ui: float,
+        periods: int = 2,
+        phase_bins: int = 50,
+    ) -> dict[str, float]:
+        """Measure the eye of ``output_v`` against the transmitted ``bits``.
+
+        The waveform is aligned to the bit pattern by correlation (this also
+        resolves the CTLE's inversion), only the final PRBS period is measured
+        so start-up transients are excluded, and the eye is folded into one UI:
+        at each phase the opening is ``min(ones) - max(zeros)``. Eye height is
+        the largest opening, eye width is the fraction of the UI where the
+        opening is positive, and eye centre is the phase of the largest opening.
+        """
+        bits = np.asarray(bits, dtype=int)
+        n_bits = bits.size
+        pattern = np.tile(bits, periods)
+        n_total = pattern.size
+        time_s = np.asarray(time_s, dtype=float)
+        output_v = np.asarray(output_v, dtype=float)
+        closed = {"eye_height_v": 0.0, "eye_width_ui": 0.0, "eye_center_ui": float("nan")}
+
+        if time_s.size < 2 or n_bits < 2:
+            return closed
+
+        centred = output_v - float(np.mean(output_v))
+        measure_from = (n_total - n_bits) * ui
+        best_score = 0.0
+        best_delay = 0.0
+        best_polarity = 1.0
+
+        # Search the latency over two UI in fine steps; the CTLE inverts, so
+        # the sign of the correlation carries the polarity.
+        for delay in np.arange(0.0, 2.0 * ui, ui / 40.0):
+            shifted = time_s - delay
+            index = np.floor(shifted / ui).astype(int)
+            valid = (shifted >= measure_from) & (index < n_total)
+            if np.count_nonzero(valid) < n_bits:
+                continue
+            ideal = np.where(pattern[index[valid]] == 1, 1.0, -1.0)
+            score = float(np.dot(centred[valid], ideal))
+            if abs(score) > abs(best_score):
+                best_score = score
+                best_delay = float(delay)
+                best_polarity = 1.0 if score >= 0.0 else -1.0
+
+        if best_score == 0.0:
+            return closed
+
+        shifted = time_s - best_delay
+        index = np.floor(shifted / ui).astype(int)
+        valid = (shifted >= measure_from) & (index < n_total)
+        signal = best_polarity * centred[valid]
+        is_one = pattern[index[valid]] == 1
+        phase = np.mod(shifted[valid], ui) / ui
+        bin_index = np.minimum((phase * phase_bins).astype(int), phase_bins - 1)
+
+        opening = np.full(phase_bins, -np.inf)
+        for b in range(phase_bins):
+            in_bin = bin_index == b
+            ones = signal[in_bin & is_one]
+            zeros = signal[in_bin & ~is_one]
+            if ones.size and zeros.size:
+                opening[b] = float(np.min(ones) - np.max(zeros))
+
+        best_bin = int(np.argmax(opening))
+        eye_height = max(0.0, float(opening[best_bin]))
+        open_bins = int(np.count_nonzero(opening > 0.0))
+
+        return {
+            "eye_height_v": eye_height,
+            "eye_width_ui": open_bins / phase_bins,
+            "eye_center_ui": (best_bin + 0.5) / phase_bins if eye_height > 0.0 else float("nan"),
+        }
+
     def _inject_parameters(
         self,
         parameters: dict[str, float],
@@ -614,6 +636,11 @@ class SpiceEvaluator:
                 "{VINN}",
                 "DC 0.6 AC -1",
             )
+
+        rendered = rendered.replace(
+            "{CHANNEL}",
+            self._channel_block(lossy=transient),
+        )
 
         if self.pdk_model_path:
             model_includes = [
@@ -758,10 +785,34 @@ class SpiceEvaluator:
     def _tran_commands() -> str:
         return (
             "\n.control\n"
-            "tran 1p 25.4n\n"
+            f"tran {SpiceEvaluator.TRANSIENT_STEP_S:.12g} "
+            f"{SpiceEvaluator.PRBS_PERIODS * 127 * SpiceEvaluator.UNIT_INTERVAL_S:.12g}\n"
             "print time v(outP) v(outN)\n"
             ".endc\n"
         )
+
+    @classmethod
+    def _channel_block(cls, lossy: bool) -> str:
+        """Return the netlist lines connecting txP/txN to inP/inN."""
+        if not lossy:
+            return "RchP txP inP 1m\nRchN txN inN 1m"
+
+        lines = []
+        for side in ("P", "N"):
+            previous = f"tx{side}"
+            for stage, ohms in enumerate(cls.CHANNEL_SECTION_OHMS, start=1):
+                node = f"in{side}" if stage == len(cls.CHANNEL_SECTION_OHMS) else f"ch{side}{stage}"
+                farads = 1.0 / (2.0 * np.pi * cls.CHANNEL_POLE_HZ * ohms)
+                lines.append(f"Rch{side}{stage} {previous} {node} {ohms:.12g}")
+                lines.append(f"Cch{side}{stage} {node} 0 {farads:.12g}")
+                previous = node
+        return "\n".join(lines)
+
+    @classmethod
+    def channel_loss_db(cls, frequency_hz: float) -> float:
+        """Nominal insertion loss of the transient channel (ignores section loading)."""
+        ratio = frequency_hz / cls.CHANNEL_POLE_HZ
+        return float(-20.0 * len(cls.CHANNEL_SECTION_OHMS) * np.log10(np.sqrt(1.0 + ratio * ratio)))
 
     @staticmethod
     def _hd3_commands() -> str:
@@ -772,14 +823,23 @@ class SpiceEvaluator:
         return "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\nsetplot noise1\nprint all\n.endc\n"
 
     @staticmethod
-    def _prbs_source(invert: bool) -> str:
-        """Return a deterministic PRBS7 PWL source at 5 Gbps."""
+    def _prbs_bits(length: int = 127) -> np.ndarray:
+        """Return the PRBS7 (x^7 + x^6 + 1) sequence from the all-ones seed."""
         register = 0x7F
-        bit_period = 200e-12
+        bits = np.zeros(length, dtype=int)
+        for index in range(length):
+            bits[index] = register & 1
+            feedback = ((register >> 6) ^ (register >> 5)) & 1
+            register = ((register << 1) | feedback) & 0x7F
+        return bits
+
+    @classmethod
+    def _prbs_source(cls, invert: bool) -> str:
+        """Return a deterministic PRBS7 PWL source at 5 Gbps, repeated PRBS_PERIODS times."""
+        bit_period = cls.UNIT_INTERVAL_S
         points: list[str] = []
 
-        for index in range(127):
-            bit = register & 1
+        for index, bit in enumerate(np.tile(cls._prbs_bits(), cls.PRBS_PERIODS)):
             level = 0.5 + (0.2 if bit else 0.0)
 
             if invert:
@@ -788,20 +848,8 @@ class SpiceEvaluator:
             start = index * bit_period
             end = (index + 1) * bit_period
 
-            points.append(
-                f"{start:.12g} {level:.12g}"
-            )
-            points.append(
-                f"{end:.12g} {level:.12g}"
-            )
-
-            feedback = (
-                (register >> 6) ^ (register >> 5)
-            ) & 1
-
-            register = (
-                (register << 1) | feedback
-            ) & 0x7F
+            points.append(f"{start:.12g} {level:.12g}")
+            points.append(f"{end:.12g} {level:.12g}")
 
         return "PWL(" + " ".join(points) + ")"
 
@@ -936,13 +984,14 @@ class SpiceEvaluator:
             dtype=float,
         )
 
-        if (
-            np.any(~np.isfinite(data))
-            or np.any(np.diff(data[:, 0]) <= 0)
-        ):
+        if np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) < 0):
             raise ValueError(
                 "invalid transient time"
             )
+
+        # ngspice repeats a timepoint at PWL breakpoints; keep the last value.
+        keep = np.append(np.diff(data[:, 0]) > 0, True)
+        data = data[keep]
 
         return (
             data[:, 0],
