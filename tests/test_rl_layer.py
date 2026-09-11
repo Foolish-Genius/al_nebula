@@ -91,6 +91,19 @@ def test_reporter_writes_validation_artifacts(tmp_path):
     assert all((tmp_path / path.split("/")[-1]).exists() for path in paths.values())
 
 
+def test_pvt_report_marks_missing_and_passed_corners(tmp_path):
+    reporter = ValidationReporter(tmp_path)
+    paths = reporter.write(
+        {"dc_valid": False},
+        pvt_results=[
+            {"name": "TT", "peaking_boost": 6.0, "pvt_pass": True},
+            {"name": "SS", "peaking_boost": float("nan"), "pvt_pass": False},
+        ],
+    )
+    assert (tmp_path / "pvt_peaking.png").exists()
+    assert paths["pvt_plot"].endswith("pvt_peaking.png")
+
+
 def test_bounded_search_keeps_best_candidate():
     class FakeSearchEvaluator:
         def run_simulation(self, action):

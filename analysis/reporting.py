@@ -116,13 +116,26 @@ class ValidationReporter:
 
     def _plot_pvt(self, rows: Sequence[Mapping[str, Any]]) -> str:
         plot = self._pyplot()
-        figure, axis = plot.subplots(figsize=(9, 4.5))
+        figure, axis = plot.subplots(figsize=(12, 5.5))
         names = [str(row.get("name", index)) for index, row in enumerate(rows)]
         values = [float(row.get("peaking_boost", np.nan)) for row in rows]
-        axis.bar(np.arange(len(names)), values)
-        axis.axhspan(3.0, 12.0, color="tab:green", alpha=0.12)
+        x_values = np.arange(len(names))
+        finite = np.isfinite(values)
+        passed = finite & (np.asarray(values) >= 3.0) & (np.asarray(values) <= 12.0)
+        failed = ~passed
+        axis.bar(x_values[finite & passed], np.asarray(values)[finite & passed], color="tab:green", label="pass")
+        axis.bar(x_values[finite & failed], np.asarray(values)[finite & failed], color="tab:red", label="fail")
+        axis.scatter(x_values[~finite], np.zeros(np.count_nonzero(~finite)), color="black", marker="x", label="not simulated")
+        axis.axhspan(3.0, 12.0, color="tab:green", alpha=0.12, zorder=0)
+        axis.axhline(3.0, color="tab:green", linestyle="--", linewidth=1)
+        axis.axhline(12.0, color="tab:orange", linestyle="--", linewidth=1)
+        simulated_count = int(np.count_nonzero(finite))
+        pass_count = int(np.count_nonzero(passed))
         axis.set(xlabel="PVT corner", ylabel="peaking boost (dB)", title="PVT peaking verification")
-        axis.set_xticks(np.arange(len(names)), names, rotation=90, fontsize=7)
+        axis.set_title(f"PVT peaking verification ({pass_count}/{len(names)} pass, {simulated_count}/{len(names)} simulated)")
+        axis.set_xticks(x_values, names, rotation=90, fontsize=7)
+        axis.set_ylim(bottom=min(0.0, float(np.nanmin(values)) if finite.any() else 0.0))
+        axis.legend()
         axis.grid(True, axis="y", alpha=0.25)
         return self._save_plot(figure, "pvt_peaking.png")
 
