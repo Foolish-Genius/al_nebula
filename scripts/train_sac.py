@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every", type=int, default=500)
     parser.add_argument("--output-dir", default="reports/sac")
     parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
+    parser.add_argument("--device", default="auto", help="torch device for SAC: auto, cpu, or cuda")
     return parser.parse_args()
 
 
@@ -110,6 +111,7 @@ def main() -> None:
         batch_size=64,
         train_freq=1,
         gradient_steps=1,
+        device=args.device,
         verbose=1,
     )
     model.learn(total_timesteps=args.timesteps, callback=[best, checkpoints])
@@ -140,6 +142,7 @@ def main() -> None:
         "transient_error": transient_result.get("error"),
         "model_source": "ngspice_generic_level1",
         "optimizer": "sac",
+        "device": str(model.device),
         "timesteps": args.timesteps,
         "best_training_reward": best.best_reward,
         "selected_action": best.best_design.tolist(),
