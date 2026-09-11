@@ -142,3 +142,14 @@ def test_equalizer_action_controls_ctle_and_dfe_tap():
     result = EqualizerEvaluator(FakeSpice()).run(np.zeros(6))
     assert result["equalizer_valid"] is True
     assert result["equalizer_tap"] == pytest.approx(0.0)
+
+
+def test_environment_uses_six_action_whole_equalizer():
+    class Whole:
+        def run(self, action):
+            assert action.shape == (6,)
+            return {"dc_valid": True, "peaking_boost": 6.0, "power": 1e-3}
+
+    environment = CtleEnvironment(Whole())
+    _, _, _, _, info = environment.step(np.zeros(6))
+    assert info["metrics"]["peaking_boost"] == 6.0

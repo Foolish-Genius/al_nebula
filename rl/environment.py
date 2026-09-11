@@ -14,6 +14,7 @@ class CtleEnvironment:
 
     def __init__(self, evaluator: Any, reward_model: CtleReward | None = None, max_steps: int = 100) -> None:
         self.evaluator = evaluator
+        self.whole_equalizer = getattr(evaluator, "run", None)
         self.reward_model = reward_model or CtleReward()
         self.max_steps = max_steps
         self.step_count = 0
@@ -30,7 +31,11 @@ class CtleEnvironment:
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Evaluate one action and return observation, reward, termination, truncation, info."""
-        metrics = self.evaluator.run_simulation(np.asarray(action, dtype=np.float64))
+        normalized_action = np.asarray(action, dtype=np.float64)
+        if normalized_action.shape == (6,) and self.whole_equalizer is not None:
+            metrics = self.whole_equalizer(normalized_action)
+        else:
+            metrics = self.evaluator.run_simulation(normalized_action)
         reward, diagnostics = self.reward_model.calculate(metrics)
         self.last_metrics = dict(metrics)
         self.step_count += 1

@@ -11,9 +11,9 @@ Phase 1 of AutoAnalog-RL: a parameterized IHP sg13g2 CTLE netlist, fail-fast ngs
 - `rl/environment.py` owns the Gym-style `reset`/`step` contract.
 - `rl/pvt.py` owns the deterministic 45-corner PVT verification matrix.
 
-The next high-value stages are transient PRBS and eye metrics, PVT-aware simulator
-injection, then SAC integration. The simulator adapter should remain unchanged
-while the scheduling and optimization layers are added.
+The pre-ML pipeline is complete through CTLE sizing, IHP PSP103 simulation,
+PRBS transient/eye validation, behavioral one-tap DFE, HD3/noise/area hooks, and
+45-corner PVT. SAC/RL training is the next phase.
 
 ## Run
 
@@ -49,9 +49,10 @@ python scripts/run_validation.py --model-source ihp \
 This uses OpenVAF-compiled `psp103.osdi` models with the sg13g2 MOS corner
 libraries. The generic Level-1 path remains available for fast debugging.
 
-The current real-IHP run passes DC, AC peaking, eye, power, area estimate, and
-all 45 PVT corners. HD3 and integrated noise are now measured explicitly but
-currently fail their strict targets; the next optimization must target those
-failures.
+The current real-IHP run passes DC, AC peaking, eye, power, area estimate,
+input-referred noise, and all 45 PVT corners. HD3 remains the measured strict
+failure and is the next optimization target.
 
-`SpiceEvaluator.run_simulation()` currently implements the Phase 1 `.op` and `.ac` gates. The transient PRBS gate remains a later pipeline stage.
+`SpiceEvaluator` implements `.op`, `.ac`, transient, PVT, HD3, noise, and area
+measurement gates. The active submission report is generated under
+`reports/runs/ihp-submission/`.

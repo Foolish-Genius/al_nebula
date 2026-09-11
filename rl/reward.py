@@ -29,6 +29,16 @@ class CtleReward:
             return self.invalid_penalty, {"all_specs_met": False, "violations": violations}
 
         evaluation = self.specifications.evaluate(metrics)
+        hard_gate_names = ("hd3", "noise", "eye_horizontal_ui", "eye_vertical_v")
+        hard_gate_failures = {
+            name: 1.0
+            for name in hard_gate_names
+            if name in metrics and self.specifications.constraints[
+                next(index for index, constraint in enumerate(self.specifications.constraints) if constraint.name == name)
+            ].violation(float(metrics[name])) > 0.0
+        }
+        if hard_gate_failures:
+            evaluation = {**evaluation, "all_specs_met": False, "hard_gate_failures": hard_gate_failures}
         violations = evaluation["violations"]
         weighted_cost = sum(
             self.weights.get(name, 1.0) * float(violation)

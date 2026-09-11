@@ -510,7 +510,10 @@ class SpiceEvaluator:
             data = np.asarray(rows, dtype=float)
             if data.size == 0 or np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) <= 0):
                 raise ValueError("missing or invalid noise data")
-            noise_vrms = float(np.sqrt(np.trapezoid(np.maximum(data[:, 1], 0.0), data[:, 0])))
+            # ngspice reports spectral density in V/sqrt(Hz); integrate its
+            # square over frequency to obtain RMS input-referred noise.
+            density = np.maximum(data[:, 1], 0.0)
+            noise_vrms = float(np.sqrt(np.trapezoid(density**2, data[:, 0])))
             return {"noise_vrms": noise_vrms, "noise_valid": bool(np.isfinite(noise_vrms)), "error": None}
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             result["error"] = str(error)
@@ -733,7 +736,7 @@ class SpiceEvaluator:
 
     @staticmethod
     def _noise_commands() -> str:
-        return "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\nsetplot noise1\nprint frequency onoise_spectrum\n.endc\n"
+        return "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\nsetplot noise1\nprint all\n.endc\n"
 
     @staticmethod
     def _prbs_source(invert: bool) -> str:
