@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-reset", action="store_true", help="start each episode from a random design")
     parser.add_argument("--checkpoint-every", type=int, default=500)
     parser.add_argument("--output-dir", default="reports/sac")
-    parser.add_argument("--ngspice", default="ngspice", help="ngspice executable")
+    parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
     return parser.parse_args()
 
 

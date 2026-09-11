@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -42,7 +43,7 @@ class SpiceEvaluator:
     def __init__(
         self,
         template_path: str | Path | None = None,
-        ngspice_binary: str = "ngspice",
+        ngspice_binary: str | None = None,
         pdk_model_path: str | Path | None = None,
         pdk_corner_path: str | Path | None = None,
         pdk_corner: str = "mos_tt",
@@ -54,7 +55,8 @@ class SpiceEvaluator:
         )
         self.template = self.template_path.read_text(encoding="utf-8")
 
-        self.ngspice_binary = ngspice_binary
+        # Resolve: explicit argument > NGSPICE environment variable > "ngspice" on PATH.
+        self.ngspice_binary = ngspice_binary or os.environ.get("NGSPICE", "ngspice")
         self.pdk_model_path = Path(pdk_model_path) if pdk_model_path else None
         self.pdk_corner_path = (
             Path(pdk_corner_path) if pdk_corner_path else None

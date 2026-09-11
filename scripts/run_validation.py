@@ -1,6 +1,7 @@
 """Run one candidate and write all available validation artifacts."""
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -15,18 +16,24 @@ from rl.search import BoundedDesignSearch
 from spice.spice_engine import SpiceEvaluator
 
 
-def main(output_dir: str = "reports", model_source: str = "generic", ngspice_binary: str = "ngspice") -> None:
+def main(
+    output_dir: str = "reports",
+    model_source: str = "generic",
+    ngspice: str | None = None,
+    pdk_root: str | None = None,
+) -> None:
     if model_source == "ihp":
-        model_dir = Path("/home/hp/ihp-open-pdk/ihp-sg13g2/libs.tech/ngspice/models")
-        osdi_dir = Path("/home/hp/ihp-open-pdk/ihp-sg13g2/libs.tech/ngspice/osdi")
+        root = Path(pdk_root or os.environ.get("IHP_PDK_ROOT", "/home/hp/ihp-open-pdk"))
+        model_dir = root / "ihp-sg13g2" / "libs.tech" / "ngspice" / "models"
+        osdi_dir = root / "ihp-sg13g2" / "libs.tech" / "ngspice" / "osdi"
         evaluator = SpiceEvaluator(
-            ngspice_binary=ngspice_binary,
+            ngspice_binary=ngspice,
             pdk_model_path=model_dir / "sg13g2_moslv_mod.lib",
             pdk_corner_path=model_dir / "cornerMOSlv.lib",
             osdi_model_paths=(osdi_dir / "psp103.osdi", osdi_dir / "psp103_nqs.osdi", osdi_dir / "mosvar.osdi"),
         )
     else:
-        evaluator = SpiceEvaluator(ngspice_binary=ngspice_binary)
+        evaluator = SpiceEvaluator(ngspice_binary=ngspice)
     action, search_rows = BoundedDesignSearch(evaluator, seed=23).run(evaluations=100)
     ac_result = evaluator.run_simulation(action)
     transient_result = evaluator.run_transient(action)
@@ -93,6 +100,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", default="reports")
     parser.add_argument("--model-source", choices=("generic", "ihp"), default="generic")
-    parser.add_argument("--ngspice-binary", default="ngspice")
-    args = parser.parse_args()
-    main(args.output_dir, args.model_source, args.ngspice_binary)
+    parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
+    parser.add_argument("--pdk-root", default=None, help="IHP Open PDK checkout (default: $IHP_PDK_ROOT)")
+    arguments = parser.parse_args()
+    main(arguments.output_dir, arguments.model_source, arguments.ngspice, arguments.pdk_root)
