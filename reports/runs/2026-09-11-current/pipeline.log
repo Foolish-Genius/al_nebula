@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "/home/hp/autoanalog_workspace/scripts/run_validation.py", line 8, in <module>
-    from analysis.reporting import ValidationReporter
-  File "/home/hp/autoanalog_workspace/analysis/__init__.py", line 3, in <module>
-    from .reporting import ValidationReporter
-  File "/home/hp/autoanalog_workspace/analysis/reporting.py", line 44
-    paths["eye_plot"] = self._plot_eye(
-                                       ^
-IndentationError: unindent does not match any outer indentation level

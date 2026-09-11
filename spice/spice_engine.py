@@ -615,13 +615,6 @@ class SpiceEvaluator:
                 self._spice_value(value),
             )
 
-        rendered = rendered.replace(
-            "{I_bias/2}",
-            self._spice_value(
-                parameters["I_bias"] / 2.0
-            ),
-        )
-
         return rendered
 
     @staticmethod
@@ -796,21 +789,6 @@ class SpiceEvaluator:
             )
 
         return float(match.group(1))
-
-    @staticmethod
-    def _parse_ac_gain(
-        output: str,
-        target_frequency: float,
-    ) -> float:
-        frequencies, gains = SpiceEvaluator._parse_ac_data(
-            output
-        )
-
-        return SpiceEvaluator._nearest_value(
-            frequencies,
-            gains,
-            target_frequency,
-        )
 
     @staticmethod
     def _parse_ac_data(
