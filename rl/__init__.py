@@ -3,6 +3,7 @@
 from .environment import CtleEnvironment
 from .dfe import apply_one_tap_dfe, eye_height, optimize_one_tap
 from .equalizer import EqualizerEvaluator
+from .gym_wrapper import make_gym_env
 from .pvt import PvtCorner, all_pvt_corners
 from .reward import CtleReward
 from .search import BoundedDesignSearch
@@ -20,4 +21,5 @@ __all__ = [
 	"BoundedDesignSearch",
 	"PvtCorner",
 	"all_pvt_corners",
+	"make_gym_env",
 ]

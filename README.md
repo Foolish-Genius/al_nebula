@@ -33,6 +33,15 @@ Use an environment with `numpy`, `pytest`, and the `ngspice` executable availabl
 python -m pytest
 ```
 
+To train the SAC agent install the optional extra and run the training script;
+it writes checkpoints, a per-step CSV, and the same validation artifact set as
+`run_validation.py` for the best design it found:
+
+```bash
+pip install -e .[rl]
+python scripts/train_sac.py --timesteps 2000 --output-dir reports/sac
+```
+
 The IHP Open PDK is installed locally. Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
 binary does not support as a built-in model. The PDK includes Verilog-A sources
 and an OpenVAF build script. The intended ngspice path is: install OpenVAF with
