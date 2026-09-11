@@ -80,3 +80,28 @@ def test_successful_transient_result_has_error_field():
 
     result = FakeEvaluator().run_transient(np.zeros(5))
     assert result["error"] is None
+    assert result["time_s"].shape == result["output_v"].shape
+    assert "eye_width_ui" in result
+
+
+def test_run_pvt_returns_explicit_corner_statuses():
+    class FakePvtEvaluator(SpiceEvaluator):
+        def run_pvt_corner(self, actions, process, vdd, temperature_c):
+            return {
+                "dc_valid": True,
+                "dc_gain": 10.0,
+                "nyquist_gain": 16.0,
+                "peaking_boost": 6.0,
+                "power": 1e-3,
+                "error": None,
+            }
+
+    class Corner:
+        name = "TT_1.20V_25C"
+        process = "TT"
+        vdd = 1.2
+        temperature_c = 25.0
+
+    rows = FakePvtEvaluator().run_pvt(np.zeros(5), (Corner(),))
+    assert rows[0]["pvt_pass"] is True
+    assert rows[0]["status"] == "pass"

@@ -33,7 +33,9 @@ pass the generated `psp103.osdi` and `psp103_nqs.osdi` files using
 check readiness. The default runner uses an explicit ngspice Level-1 model to
 validate the architecture and data flow; reports label this model source
 clearly. Xyce is not required once the OSDI models are compiled.
-Run `python scripts/run_validation.py` to regenerate the complete artifact set;
-the PVT CSV lists all 45 corners and marks unavailable simulator runs explicitly.
+Run `python scripts/run_validation.py --output-dir reports/runs/latest` to
+regenerate the complete artifact set without overwriting an earlier run. The
+PVT CSV and graph contain all 45 simulated corners with pass/fail status. See
+`papers/README.md` for the supplied paper's CTLE design takeaways and references.
 
 `SpiceEvaluator.run_simulation()` currently implements the Phase 1 `.op` and `.ac` gates. The transient PRBS gate remains a later pipeline stage.
