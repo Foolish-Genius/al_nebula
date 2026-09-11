@@ -10,6 +10,7 @@ import numpy as np
 
 from analysis.reporting import ValidationReporter
 from rl.pvt import all_pvt_corners
+from rl.equalizer import EqualizerEvaluator
 from rl.search import BoundedDesignSearch
 from spice.spice_engine import SpiceEvaluator
 
@@ -29,6 +30,10 @@ def main(output_dir: str = "reports", model_source: str = "generic", ngspice_bin
     action, search_rows = BoundedDesignSearch(evaluator, seed=23).run(evaluations=100)
     ac_result = evaluator.run_simulation(action)
     transient_result = evaluator.run_transient(action)
+    whole_equalizer = EqualizerEvaluator(evaluator).run(np.r_[action, 0.0])
+    linearity_result = evaluator.run_linearity(action)
+    noise_result = evaluator.run_noise(action)
+    area_result = evaluator.estimate_area(action)
     pvt_results = evaluator.run_pvt(action, all_pvt_corners())
     pvt_simulated = sum(
         bool(row["dc_valid"]) and np.isfinite(row["peaking_boost"])
@@ -49,6 +54,16 @@ def main(output_dir: str = "reports", model_source: str = "generic", ngspice_bin
         "eye_width_pass": transient_result.get("eye_width_pass"),
         "dfe_tap": transient_result.get("dfe_tap"),
         "dfe_eye_height_v": transient_result.get("dfe_eye_height_v"),
+        "equalizer_tap": whole_equalizer.get("equalizer_tap"),
+        "equalizer_eye_height_v": whole_equalizer.get("dfe_eye_height_v"),
+        "equalizer_valid": whole_equalizer.get("equalizer_valid", False),
+        "hd3_db": linearity_result["hd3_db"],
+        "linearity_valid": linearity_result["linearity_valid"],
+        "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < -30.0),
+        "noise_vrms": noise_result["noise_vrms"],
+        "noise_valid": noise_result["noise_valid"],
+        "noise_pass": bool(noise_result["noise_valid"] and noise_result["noise_vrms"] < 1.5e-3),
+        **area_result,
         "transient_error": transient_result.get("error"),
         "model_source": f"{model_source}_ngspice",
         "selected_action": action.tolist(),

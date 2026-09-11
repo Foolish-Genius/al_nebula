@@ -468,6 +468,62 @@ class SpiceEvaluator:
             failure["error"] = str(error)
             return failure
 
+    def run_linearity(self, actions: np.ndarray) -> dict[str, Any]:
+        """Measure third-harmonic distortion for a 100 MHz differential input."""
+        result = {"hd3_db": float("nan"), "linearity_valid": False, "error": None}
+        try:
+            parameters = self.map_actions(actions)
+            netlist = self._inject_parameters(parameters, stimulus="hd3")
+            with tempfile.TemporaryDirectory(prefix="autoanalog-hd3-") as directory:
+                output = self._run_ngspice(self._with_commands(netlist, self._hd3_commands()), Path(directory) / "hd3")
+            time_s, output_v = self._parse_transient(output)
+            keep = time_s >= time_s.min() + 0.5 * (time_s.max() - time_s.min())
+            sample_time = np.linspace(time_s[keep].min(), time_s[keep].max(), 5001)
+            values = np.interp(sample_time, time_s[keep], output_v[keep])
+            values -= np.mean(values)
+            spectrum = np.abs(np.fft.rfft(values))
+            frequencies = np.fft.rfftfreq(values.size, sample_time[1] - sample_time[0])
+            fundamental = spectrum[np.argmin(abs(frequencies - 100e6))]
+            third = spectrum[np.argmin(abs(frequencies - 300e6))]
+            hd3 = float(20.0 * np.log10(max(third, 1e-30) / max(fundamental, 1e-30)))
+            return {"hd3_db": hd3, "linearity_valid": bool(np.isfinite(hd3)), "error": None}
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
+            result["error"] = str(error)
+            return result
+
+    def run_noise(self, actions: np.ndarray) -> dict[str, Any]:
+        """Integrate output-noise density over the 10 MHz to 5 GHz band."""
+        result = {"noise_vrms": float("nan"), "noise_valid": False, "error": None}
+        try:
+            parameters = self.map_actions(actions)
+            netlist = self._inject_parameters(parameters)
+            with tempfile.TemporaryDirectory(prefix="autoanalog-noise-") as directory:
+                output = self._run_ngspice(self._with_commands(netlist, self._noise_commands()), Path(directory) / "noise")
+            rows = []
+            for line in output.splitlines():
+                fields = line.split()
+                if len(fields) >= 3:
+                    try:
+                        rows.append((float(fields[1]), float(fields[2])))
+                    except ValueError:
+                        continue
+            data = np.asarray(rows, dtype=float)
+            if data.size == 0 or np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) <= 0):
+                raise ValueError("missing or invalid noise data")
+            noise_vrms = float(np.sqrt(np.trapezoid(np.maximum(data[:, 1], 0.0), data[:, 0])))
+            return {"noise_vrms": noise_vrms, "noise_valid": bool(np.isfinite(noise_vrms)), "error": None}
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
+            result["error"] = str(error)
+            return result
+
+    def estimate_area(self, actions: np.ndarray) -> dict[str, Any]:
+        """Return a documented first-order active-device area estimate in mm^2."""
+        parameters = self.map_actions(actions)
+        width_um = parameters["W_in"] * 1e6
+        length_um = 0.13
+        area_mm2 = 3.0 * width_um * length_um * 1e-6
+        return {"area_mm2": area_mm2, "area_valid": bool(area_mm2 < 0.05), "area_method": "active_mos_geometry_estimate"}
+
     def _inject_parameters(
         self,
         parameters: dict[str, float],
@@ -475,6 +531,7 @@ class SpiceEvaluator:
         vdd: float = 1.2,
         temperature_c: float | None = None,
         pvt_process: str | None = None,
+        stimulus: str = "ac",
     ) -> str:
         rendered = self.template.replace(
             "{VDD}",
@@ -493,7 +550,10 @@ class SpiceEvaluator:
                 "",
             )
 
-        if transient:
+        if stimulus == "hd3":
+            rendered = rendered.replace("{VINP}", "DC 0.6 SIN(0.0 0.05 100Meg)")
+            rendered = rendered.replace("{VINN}", "DC 0.6 SIN(0.0 -0.05 100Meg)")
+        elif transient:
             rendered = rendered.replace(
                 "{VINP}",
                 self._prbs_source(False),
@@ -666,6 +726,14 @@ class SpiceEvaluator:
             "print time v(outP) v(outN)\n"
             ".endc\n"
         )
+
+    @staticmethod
+    def _hd3_commands() -> str:
+        return "\n.control\ntran 10p 50n\nprint time v(outP) v(outN)\n.endc\n"
+
+    @staticmethod
+    def _noise_commands() -> str:
+        return "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\nsetplot noise1\nprint frequency onoise_spectrum\n.endc\n"
 
     @staticmethod
     def _prbs_source(invert: bool) -> str:

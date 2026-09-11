@@ -82,6 +82,12 @@ def test_pvt_process_maps_to_ihp_library_corner(tmp_path):
     assert ".lib" in rendered and "mos_ss" in rendered
 
 
+def test_area_estimate_reports_units_and_limit():
+    result = SpiceEvaluator().estimate_area(np.zeros(5))
+    assert result["area_mm2"] > 0.0
+    assert result["area_valid"] is True
+
+
 def test_successful_transient_result_has_error_field():
     class FakeEvaluator(SpiceEvaluator):
         def _run_ngspice(self, netlist, stem):
