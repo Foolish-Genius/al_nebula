@@ -1,0 +1,24 @@
+{
+  "dc_gain": 11.091341698948739,
+  "dc_valid": true,
+  "error": null,
+  "eye_height_v": 1.86607025,
+  "model_source": "ngspice_generic_level1",
+  "nyquist_gain": 18.689059975116663,
+  "peaking_boost": 7.5977182761679245,
+  "power": 0.001823055571037364,
+  "pvt_all_pass": true,
+  "pvt_corner_count": 45,
+  "pvt_pass_count": 45,
+  "pvt_simulated_count": 45,
+  "search_evaluations": 100,
+  "selected_action": [
+    -0.38989265946997476,
+    0.5088309523034102,
+    0.49390839564681044,
+    -0.17321970222160665,
+    0.6837723796830992
+  ],
+  "tran_valid": true,
+  "transient_error": null
+}
