@@ -523,6 +523,8 @@ class SpiceEvaluator:
                     if pvt_process is not None
                     else self.pdk_corner
                 )
+                if pvt_process in {"TT", "SS", "FF", "SF", "FS"}:
+                    corner = f"mos_{pvt_process.lower()}"
 
                 model_includes.insert(
                     0,

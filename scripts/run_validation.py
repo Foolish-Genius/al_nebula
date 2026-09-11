@@ -14,8 +14,18 @@ from rl.search import BoundedDesignSearch
 from spice.spice_engine import SpiceEvaluator
 
 
-def main(output_dir: str = "reports") -> None:
-    evaluator = SpiceEvaluator()
+def main(output_dir: str = "reports", model_source: str = "generic", ngspice_binary: str = "ngspice") -> None:
+    if model_source == "ihp":
+        model_dir = Path("/home/hp/ihp-open-pdk/ihp-sg13g2/libs.tech/ngspice/models")
+        osdi_dir = Path("/home/hp/ihp-open-pdk/ihp-sg13g2/libs.tech/ngspice/osdi")
+        evaluator = SpiceEvaluator(
+            ngspice_binary=ngspice_binary,
+            pdk_model_path=model_dir / "sg13g2_moslv_mod.lib",
+            pdk_corner_path=model_dir / "cornerMOSlv.lib",
+            osdi_model_paths=(osdi_dir / "psp103.osdi", osdi_dir / "psp103_nqs.osdi", osdi_dir / "mosvar.osdi"),
+        )
+    else:
+        evaluator = SpiceEvaluator(ngspice_binary=ngspice_binary)
     action, search_rows = BoundedDesignSearch(evaluator, seed=23).run(evaluations=100)
     ac_result = evaluator.run_simulation(action)
     transient_result = evaluator.run_transient(action)
@@ -40,7 +50,7 @@ def main(output_dir: str = "reports") -> None:
         "dfe_tap": transient_result.get("dfe_tap"),
         "dfe_eye_height_v": transient_result.get("dfe_eye_height_v"),
         "transient_error": transient_result.get("error"),
-        "model_source": "ngspice_generic_level1",
+        "model_source": f"{model_source}_ngspice",
         "selected_action": action.tolist(),
         "search_evaluations": len(search_rows),
         "pvt_corner_count": len(pvt_results),
@@ -66,4 +76,7 @@ def main(output_dir: str = "reports") -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", default="reports")
-    main(parser.parse_args().output_dir)
+    parser.add_argument("--model-source", choices=("generic", "ihp"), default="generic")
+    parser.add_argument("--ngspice-binary", default="ngspice")
+    args = parser.parse_args()
+    main(args.output_dir, args.model_source, args.ngspice_binary)

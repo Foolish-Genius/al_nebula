@@ -37,4 +37,16 @@ regenerate the complete artifact set without overwriting an earlier run. The
 PVT CSV and graph contain all 45 simulated corners with pass/fail status. See
 `papers/README.md` for the supplied paper's CTLE design takeaways and references.
 
+For final IHP PSP103 validation, use the local OSDI-capable ngspice build:
+
+```bash
+export LD_LIBRARY_PATH=/home/hp/miniconda3/envs/autoanalog/lib:/home/hp/ngspice-45.2/install/lib
+python scripts/run_validation.py --model-source ihp \
+	--ngspice-binary /home/hp/ngspice-45.2/install/bin/ngspice \
+	--output-dir reports/runs/ihp-final
+```
+
+This uses OpenVAF-compiled `psp103.osdi` models with the sg13g2 MOS corner
+libraries. The generic Level-1 path remains available for fast debugging.
+
 `SpiceEvaluator.run_simulation()` currently implements the Phase 1 `.op` and `.ac` gates. The transient PRBS gate remains a later pipeline stage.

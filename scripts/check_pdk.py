@@ -10,12 +10,16 @@ from pathlib import Path
 def main() -> None:
     pdk = Path("/home/hp/ihp-open-pdk/ihp-sg13g2")
     compiler = shutil.which("openvaf-r") or shutil.which("openvaf")
+    if compiler is None and Path("/home/hp/openvaf-r/bin/openvaf-r").exists():
+        compiler = "/home/hp/openvaf-r/bin/openvaf-r"
     osdi_dir = pdk / "libs.tech/ngspice/osdi"
     print(f"pdk: {pdk.exists()}")
     compiler_status = "missing"
     if compiler:
         try:
-            subprocess.run([compiler, "--version"], check=True, capture_output=True)
+            environment = dict(__import__("os").environ)
+            environment["LD_LIBRARY_PATH"] = "/home/hp/miniconda3/envs/autoanalog/lib:" + environment.get("LD_LIBRARY_PATH", "")
+            subprocess.run([compiler, "--version"], check=True, capture_output=True, env=environment)
             compiler_status = "usable"
         except (OSError, subprocess.SubprocessError):
             compiler_status = "installed but unusable"
