@@ -11,6 +11,7 @@ dependencies = ["matplotlib>=3.8", "numpy>=1.24"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+rl = ["gymnasium>=0.29", "stable-baselines3>=2.3", "torch>=2.2"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

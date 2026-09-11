@@ -5,6 +5,7 @@ from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.dfe import apply_one_tap_dfe, optimize_one_tap
 from rl.equalizer import EqualizerEvaluator
+from rl.gym_wrapper import make_gym_env
 from rl.pvt import PvtCorner, all_pvt_corners
 from rl.search import BoundedDesignSearch
 from rl.reward import CtleReward
@@ -222,3 +223,17 @@ def test_environment_rejects_bad_actions():
         environment.step(np.zeros(4))
     with pytest.raises(ValueError):
         environment.step(np.array([0.0, 0.0, 1.5, 0.0, 0.0]))
+
+
+def test_gym_wrapper_exposes_box_spaces():
+    gymnasium = pytest.importorskip("gymnasium")
+    env = CtleEnvironment(FakeEvaluator(), run_transient=False)
+    wrapped = make_gym_env(env)
+    assert isinstance(wrapped, gymnasium.Env)
+    assert wrapped.action_space.shape == (5,)
+    assert wrapped.observation_space.shape == (env.observation_size,)
+    observation, _ = wrapped.reset(seed=1)
+    assert wrapped.observation_space.contains(observation)
+    observation, reward, terminated, truncated, info = wrapped.step(np.full(5, 1.0000001, dtype=np.float32))
+    assert wrapped.observation_space.contains(observation)
+    assert terminated is True
