@@ -142,3 +142,55 @@ def test_pdk_corner_names_map_to_ihp_sections(tmp_path):
     parameters = evaluator.map_actions(np.zeros(5))
     assert "corner.lib mos_ss" in evaluator._inject_parameters(parameters, pvt_process="SS")
     assert "corner.lib mos_tt" in evaluator._inject_parameters(parameters)
+
+
+def _nrz(bits_pattern, ui, delay=0.0, invert=False, tau=None, step=2e-12):
+    time = np.arange(0.0, bits_pattern.size * ui, step)
+    index = np.clip(np.floor((time - delay) / ui).astype(int), 0, bits_pattern.size - 1)
+    wave = np.where(bits_pattern[index] == 1, 0.5, -0.5)
+    wave[time < delay] = -0.5
+    if invert:
+        wave = -wave
+    if tau:
+        alpha = step / tau
+        for i in range(1, wave.size):
+            wave[i] = wave[i - 1] + alpha * (wave[i] - wave[i - 1])
+    return time, wave
+
+
+def test_eye_metrics_measure_a_clean_delayed_inverted_eye_as_fully_open():
+    bits = SpiceEvaluator._prbs_bits()
+    ui = SpiceEvaluator.UNIT_INTERVAL_S
+    time, wave = _nrz(np.tile(bits, 2), ui, delay=0.7 * ui, invert=True)
+    eye = SpiceEvaluator._eye_metrics(time, wave, bits, ui)
+    assert eye["eye_height_v"] == pytest.approx(1.0)
+    assert eye["eye_width_ui"] == pytest.approx(1.0)
+
+
+def test_eye_metrics_shrink_with_isi_and_close_on_noise():
+    bits = SpiceEvaluator._prbs_bits()
+    ui = SpiceEvaluator.UNIT_INTERVAL_S
+    time, wave = _nrz(np.tile(bits, 2), ui, tau=200e-12)
+    eye = SpiceEvaluator._eye_metrics(time, wave, bits, ui)
+    assert 0.0 < eye["eye_height_v"] < 0.5
+    assert 0.0 < eye["eye_width_ui"] < 0.8
+    noise = np.random.default_rng(0).normal(0.0, 0.1, time.size)
+    closed = SpiceEvaluator._eye_metrics(time, noise, bits, ui)
+    assert closed["eye_height_v"] == 0.0 and closed["eye_width_ui"] == 0.0
+
+
+def test_channel_is_lossy_only_in_the_transient_netlist():
+    evaluator = SpiceEvaluator()
+    parameters = evaluator.map_actions(np.zeros(5))
+    ac_netlist = evaluator._inject_parameters(parameters)
+    tran_netlist = evaluator._inject_parameters(parameters, transient=True)
+    assert "RchP txP inP 1m" in ac_netlist and "CchP1" not in ac_netlist
+    assert "CchP1 chP1 0" in tran_netlist and "RchP2 chP1 inP 500" in tran_netlist
+    assert "{CHANNEL}" not in ac_netlist and "{CHANNEL}" not in tran_netlist
+    assert SpiceEvaluator.channel_loss_db(2.5e9) == pytest.approx(-10.0, abs=0.1)
+
+
+def test_transient_parser_collapses_repeated_timepoints():
+    time, output = SpiceEvaluator._parse_transient("0 0 0.5 0.4\n1 1e-12 0.6 0.4\n2 1e-12 0.7 0.4\n3 2e-12 0.8 0.4\n")
+    assert time.tolist() == [0.0, 1e-12, 2e-12]
+    assert output.tolist() == pytest.approx([0.1, 0.3, 0.4])

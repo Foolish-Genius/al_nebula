@@ -135,6 +135,8 @@ def main() -> None:
         "tran_valid": transient_result["tran_valid"],
         "eye_height_v": transient_result["eye_height_v"],
         "eye_width_ui": transient_result["eye_width_ui"],
+        "eye_center_ui": transient_result["eye_center_ui"],
+        "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
         "transient_error": transient_result.get("error"),
         "model_source": "ngspice_generic_level1",
         "optimizer": "sac",

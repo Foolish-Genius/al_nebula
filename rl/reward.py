@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
+import numpy as np
+
 from .specs import CtleSpecifications
 
 
@@ -16,11 +18,13 @@ class CtleReward:
         weights: Mapping[str, float] | None = None,
         invalid_penalty: float = -100.0,
         success_bonus: float = 20.0,
+        efficiency_weight: float = 1.0,
     ) -> None:
         self.specifications = specifications or CtleSpecifications()
         self.weights = dict(weights or {})
         self.invalid_penalty = invalid_penalty
         self.success_bonus = success_bonus
+        self.efficiency_weight = efficiency_weight
 
     def calculate(self, metrics: Mapping[str, float]) -> tuple[float, dict[str, object]]:
         """Return reward and diagnostics without hiding any constraint violations."""
@@ -45,7 +49,15 @@ class CtleReward:
             self.weights.get(name, 1.0) * float(violation)
             for name, violation in violations.items()
         )
-        reward = -weighted_cost
+        # Charge for power continuously so the reward still has a gradient once
+        # every constraint is satisfied; the term is at most efficiency_weight.
+        power = float(metrics.get("power", np.nan))
+        efficiency_cost = (
+            self.efficiency_weight * min(1.0, power / self.specifications.power_max_w)
+            if np.isfinite(power)
+            else self.efficiency_weight
+        )
+        reward = -weighted_cost - efficiency_cost
         if evaluation["all_specs_met"]:
             reward += self.success_bonus
-        return reward, {**evaluation, "weighted_cost": weighted_cost}
+        return reward, {**evaluation, "weighted_cost": weighted_cost, "efficiency_cost": efficiency_cost}

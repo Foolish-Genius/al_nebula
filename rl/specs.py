@@ -35,9 +35,13 @@ class CtleSpecifications:
     nyquist_frequency_hz: float = 2.5e9
     peaking_min_db: float = 3.0
     peaking_max_db: float = 12.0
-    power_max_w: float = 15e-3
-    eye_horizontal_min_ui: float = 0.4
-    eye_vertical_min_v: float = 0.1
+    # The 2 mA tail-current bound caps power at 2.4 mW, so the ceiling is set
+    # where it actually binds; the reward also charges for power continuously.
+    power_max_w: float = 2e-3
+    # Eye targets measured after the lossy transient channel; calibrated so
+    # roughly one in ten random designs satisfies every spec.
+    eye_horizontal_min_ui: float = 0.7
+    eye_vertical_min_v: float = 0.5
     # Targets no simulation gate measures yet. They are kept so reports can
     # cite them but are deliberately not enforced: an unmeasured metric would
     # otherwise be a permanent violation that makes success unreachable.

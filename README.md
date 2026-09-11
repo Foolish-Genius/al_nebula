@@ -5,9 +5,15 @@ Phase 1 of AutoAnalog-RL: a parameterized IHP sg13g2 CTLE netlist, fail-fast ngs
 ## Architecture
 
 - `netlists/` owns circuit topology and injectable SPICE parameters.
-- `spice/` owns simulator execution, parsing, and DC/AC gating.
+- `spice/` owns simulator execution, parsing, and the DC/AC/transient gates. The
+  transient gate drives a 2-period PRBS7 at 5 Gbps through a lossy RC channel
+  (about -10 dB at 2.5 GHz, see `SpiceEvaluator.CHANNEL_POLE_HZ`) and measures
+  the eye by aligning the output to the transmitted bits: height is the largest
+  `min(ones) - max(zeros)` over phase, width is the fraction of the UI that is
+  open. The DC/AC gates bypass the channel so `peaking_boost` is the CTLE alone.
 - `rl/specs.py` owns measurable targets and normalized constraint violations.
-- `rl/reward.py` owns reward shaping and configurable weights.
+- `rl/reward.py` owns reward shaping and configurable weights, including a
+  continuous power charge so the reward keeps a gradient inside the feasible set.
 - `rl/environment.py` owns the Gym-style `reset`/`step` contract. State is the
   normalized design vector; actions are deltas by default (`action_mode="absolute"`
   to replace it). Each step runs the DC/AC gate and, on success, the transient
@@ -56,13 +62,11 @@ regenerate the complete artifact set without overwriting an earlier run. The
 PVT CSV and graph contain all 45 simulated corners with pass/fail status. See
 `papers/README.md` for the supplied paper's CTLE design takeaways and references.
 
-For final IHP PSP103 validation, use the local OSDI-capable ngspice build:
+For final IHP PSP103 validation, use an OSDI-capable ngspice build and point
+`--pdk-root` (or `IHP_PDK_ROOT`) at the IHP Open PDK checkout:
 
 ```bash
-export LD_LIBRARY_PATH=/home/hp/miniconda3/envs/autoanalog/lib:/home/hp/ngspice-45.2/install/lib
-python scripts/run_validation.py --model-source ihp \
-	--ngspice-binary /home/hp/ngspice-45.2/install/bin/ngspice \
-	--output-dir reports/runs/ihp-final
+python scripts/run_validation.py --model-source ihp 	--ngspice /path/to/osdi-capable/ngspice 	--pdk-root /path/to/ihp-open-pdk 	--output-dir reports/runs/ihp-final
 ```
 
 This uses OpenVAF-compiled `psp103.osdi` models with the sg13g2 MOS corner
@@ -72,6 +76,10 @@ The current real-IHP run passes DC, AC peaking, eye, power, area estimate,
 input-referred noise, and all 45 PVT corners. HD3 remains the measured strict
 failure and is the next optimization target.
 
-`SpiceEvaluator` implements `.op`, `.ac`, transient, PVT, HD3, noise, and area
-measurement gates. The active submission report is generated under
+`SpiceEvaluator.run_simulation()` implements the `.op` and `.ac` gates;
+`run_transient()` implements the channel + PRBS eye gate plus the behavioural
+one-tap DFE; `run_linearity()`, `run_noise()`, `estimate_area()`, and
+`run_pvt()` cover HD3, noise, area, and the corner matrix. Set `NGSPICE` to the
+ngspice executable (on Windows use `ngspice_con.exe`) or pass `--ngspice` to
+the scripts. The active submission report is generated under
 `reports/runs/ihp-submission/`.

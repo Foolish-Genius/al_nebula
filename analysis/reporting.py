@@ -41,7 +41,7 @@ class ValidationReporter:
         if transient_time_s is not None and transient_output_v is not None:
             paths["tran_csv"] = self._write_pairs("transient.csv", "time_s", "differential_output_v", transient_time_s, transient_output_v)
             paths["tran_plot"] = self._plot_transient(transient_time_s, transient_output_v)
-            paths["eye_plot"] = self._plot_eye(transient_time_s, transient_output_v)
+            paths["eye_plot"] = self._plot_eye(transient_time_s, transient_output_v, metrics)
         if pvt_results is not None:
             pvt_path = self.output_dir / "pvt_results.csv"
             rows = list(pvt_results)
@@ -107,34 +107,27 @@ class ValidationReporter:
         axis.grid(True, alpha=0.25)
         return self._save_plot(figure, "transient.png")
 
-    def _plot_eye(self, time_s: Sequence[float], output_v: Sequence[float]) -> str:
+    def _plot_eye(self, time_s: Sequence[float], output_v: Sequence[float], metrics: Mapping[str, Any] | None = None) -> str:
+        """Overlay 2-UI slices of the second half of the waveform and annotate the measured eye."""
         plot = self._pyplot()
         figure, axis = plot.subplots(figsize=(7, 5))
         time = np.asarray(time_s)
         values = np.asarray(output_v)
         ui = 200e-12
+        metrics = metrics or {}
         if time.size and values.size:
-            # Overlay adjacent 2-UI windows. This is the conventional eye
-            # view: every transition is aligned to the same unit-interval grid.
-            start = time.min()
-            window = 2.0 * ui
-            segment_count = int(np.floor((time.max() - start - window) / ui))
-            for index in range(max(0, segment_count)):
-                segment_start = start + index * ui
-                mask = (time >= segment_start) & (time < segment_start + window)
-                if np.count_nonzero(mask) >= 2:
-                    axis.plot(
-                        (time[mask] - segment_start) / ui,
-                        values[mask],
-                        color="tab:blue",
-                        alpha=0.08,
-                        linewidth=0.6,
-                    )
-            axis.set_xlim(0.0, 2.0)
-            axis.set_xticks((0.0, 0.5, 1.0, 1.5, 2.0))
+            first = time.min() + (time.max() - time.min()) / 2.0
+            for start in np.arange(first, time.max() - ui, ui):
+                mask = (time >= start) & (time < start + 2 * ui)
+                if mask.any():
+                    axis.plot((time[mask] - start) / ui, values[mask], color="tab:blue", alpha=0.12)
+            height = metrics.get("eye_height_v")
+            width = metrics.get("eye_width_ui")
+            if height is not None and width is not None and np.isfinite(height) and np.isfinite(width):
+                axis.text(0.02, 0.98, f"eye height {height:.3f} V\neye width {width:.2f} UI", ha="left", va="top", transform=axis.transAxes, fontsize=9)
         else:
             axis.text(0.5, 0.5, "no transient data\n(gate failed)", ha="center", va="center", transform=axis.transAxes)
-        axis.set(xlabel="unit intervals (2 UI overlay)", ylabel="differential output (V)", title="CTLE eye diagram")
+        axis.set(xlabel="unit intervals", ylabel="differential output (V)", title="eye diagram (after channel + CTLE)")
         axis.grid(True, alpha=0.25)
         return self._save_plot(figure, "eye_diagram.png")
 
