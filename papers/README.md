@@ -1,7 +1,6 @@
 # AutoAnalog-RL research notes
 
 This folder contains the supplied CTLE paper and implementation-oriented references.
-The papers inform design choices; they are not substitutes for corner simulation.
 
 ## Supplied reference
 
@@ -20,8 +19,3 @@ Useful takeaways applied to this project:
 
 - PCI-SIG, PCI Express Base Specification Revision 2.0. Use the licensed specification for the authoritative Gen 2 electrical limits and compliance masks.
 - IEEE 802.3, Clause 52 and related receiver-equalization material. Use the licensed standard for formal receiver stress and eye measurements.
-
-## Reproducibility policy
-
-Only references that are legally redistributable should be copied into this folder.
-For standards, keep links and citations rather than redistributing copyrighted PDFs.
