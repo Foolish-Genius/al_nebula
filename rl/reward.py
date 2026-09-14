@@ -19,12 +19,14 @@ class CtleReward:
         invalid_penalty: float = -100.0,
         success_bonus: float = 20.0,
         efficiency_weight: float = 1.0,
+        margin_weight: float = 0.0,
     ) -> None:
         self.specifications = specifications or CtleSpecifications()
         self.weights = dict(weights or {})
         self.invalid_penalty = invalid_penalty
         self.success_bonus = success_bonus
         self.efficiency_weight = efficiency_weight
+        self.margin_weight = margin_weight
 
     def calculate(self, metrics: Mapping[str, float]) -> tuple[float, dict[str, object]]:
         """Return reward and diagnostics without hiding any constraint violations."""
@@ -58,6 +60,18 @@ class CtleReward:
             else self.efficiency_weight
         )
         reward = -weighted_cost - efficiency_cost
+        # Reward the tightest spec margin once every constraint passes, so the
+        # agent is pulled into the feasible set instead of hugging its boundary.
+        margin = min(1.0, min(evaluation["margins"].values()))
+        margin_bonus = 0.0
         if evaluation["all_specs_met"]:
             reward += self.success_bonus
-        return reward, {**evaluation, "weighted_cost": weighted_cost, "efficiency_cost": efficiency_cost}
+            margin_bonus = self.margin_weight * max(0.0, margin)
+            reward += margin_bonus
+        return reward, {
+            **evaluation,
+            "weighted_cost": weighted_cost,
+            "efficiency_cost": efficiency_cost,
+            "margin": margin,
+            "margin_bonus": margin_bonus,
+        }

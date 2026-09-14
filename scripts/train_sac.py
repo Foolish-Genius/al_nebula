@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import json
 from pathlib import Path
 import sys
@@ -23,6 +24,7 @@ import numpy as np
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.gym_wrapper import make_gym_env
+from rl.reward import CtleReward
 from rl.pvt import all_pvt_corners
 from spice.spice_engine import SpiceEvaluator
 
@@ -40,7 +42,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="reports/sac")
     parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
     parser.add_argument("--device", default="auto", help="torch device for SAC: auto, cpu, or cuda")
+    parser.add_argument("--n-envs", type=int, default=1, help="parallel environments (threads, each driving its own ngspice)")
+    parser.add_argument(
+        "--hold-on-success",
+        action="store_true",
+        help="keep the episode running after all specs pass so feasible steps keep earning reward",
+    )
+    parser.add_argument("--invalid-penalty", type=float, default=-100.0, help="reward for a DC-invalid design")
+    parser.add_argument("--success-bonus", type=float, default=20.0)
+    parser.add_argument("--margin-weight", type=float, default=0.0, help="bonus per unit of tightest spec margin once feasible")
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--gradient-steps", type=int, default=1, help="-1 matches the number of env steps per rollout")
+    parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--ent-coef", default="auto", help="SAC entropy coefficient, e.g. auto, auto_0.1, or 0.05")
+    parser.add_argument("--target-entropy", default="auto", help="SAC target entropy: auto or a float")
     return parser.parse_args()
+
+
+def build_env(config: dict):
+    """Build one gym env from plain config so SubprocVecEnv can pickle the factory."""
+    evaluator = SpiceEvaluator(ngspice_binary=config["ngspice"])
+    reward = CtleReward(
+        invalid_penalty=config["invalid_penalty"],
+        success_bonus=config["success_bonus"],
+        margin_weight=config["margin_weight"],
+    )
+    environment = CtleEnvironment(
+        evaluator,
+        reward_model=reward,
+        max_steps=config["max_steps"],
+        delta_scale=config["delta_scale"],
+        run_transient=config["run_transient"],
+        random_reset=config["random_reset"],
+        terminate_on_success=config["terminate_on_success"],
+    )
+    return make_gym_env(environment)
 
 
 def main() -> None:
@@ -48,22 +84,36 @@ def main() -> None:
     try:
         from stable_baselines3 import SAC
         from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
-        from stable_baselines3.common.monitor import Monitor
+        from stable_baselines3.common.env_util import make_vec_env
+        from stable_baselines3.common.vec_env import DummyVecEnv
+
+        from rl.threaded_vec_env import ThreadedVecEnv
     except ImportError as error:
         raise SystemExit("install the 'rl' extra first: pip install -e .[rl]") from error
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    env_config = {
+        "ngspice": args.ngspice,
+        "invalid_penalty": args.invalid_penalty,
+        "success_bonus": args.success_bonus,
+        "margin_weight": args.margin_weight,
+        "max_steps": args.max_steps,
+        "delta_scale": args.delta_scale,
+        "run_transient": not args.no_transient,
+        "random_reset": args.random_reset,
+        "terminate_on_success": not args.hold_on_success,
+    }
+    (output_dir / "config.json").write_text(json.dumps({**vars(args), **env_config}, indent=2), encoding="utf-8")
     evaluator = SpiceEvaluator(ngspice_binary=args.ngspice)
-    environment = CtleEnvironment(
-        evaluator,
-        max_steps=args.max_steps,
-        delta_scale=args.delta_scale,
-        run_transient=not args.no_transient,
-        random_reset=args.random_reset,
+    env = make_vec_env(
+        functools.partial(build_env, env_config),
+        n_envs=args.n_envs,
+        seed=args.seed,
+        monitor_dir=str(output_dir),
+        vec_env_cls=ThreadedVecEnv if args.n_envs > 1 else DummyVecEnv,
     )
-    env = Monitor(make_gym_env(environment), filename=str(output_dir / "monitor"))
 
     class BestDesignCallback(BaseCallback):
         """Track the best-rewarded design seen during training and log every step."""
@@ -103,14 +153,18 @@ def main() -> None:
     best = BestDesignCallback()
     checkpoints = CheckpointCallback(save_freq=args.checkpoint_every, save_path=str(output_dir / "checkpoints"), name_prefix="sac")
 
+    target_entropy = "auto" if args.target_entropy == "auto" else float(args.target_entropy)
     model = SAC(
         "MlpPolicy",
         env,
         seed=args.seed,
         learning_starts=args.learning_starts,
-        batch_size=64,
+        batch_size=args.batch_size,
         train_freq=1,
-        gradient_steps=1,
+        gradient_steps=args.gradient_steps,
+        gamma=args.gamma,
+        ent_coef=args.ent_coef,
+        target_entropy=target_entropy,
         device=args.device,
         verbose=1,
     )
@@ -144,6 +198,9 @@ def main() -> None:
         "optimizer": "sac",
         "device": str(model.device),
         "timesteps": args.timesteps,
+        "n_envs": args.n_envs,
+        "hold_on_success": args.hold_on_success,
+        "margin_weight": args.margin_weight,
         "best_training_reward": best.best_reward,
         "selected_action": best.best_design.tolist(),
         "parameters": evaluator.map_actions(best.best_design),

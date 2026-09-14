@@ -18,9 +18,11 @@ class CtleEnvironment:
     in ``"absolute"`` mode each action replaces the design vector outright.
 
     Every step runs the DC/AC gate and, when it passes, the transient PRBS gate
-    so eye metrics reach the reward. Episodes end on ``all_specs_met`` or after
-    ``max_steps``; a DC failure is penalized but does not end the episode, so a
-    delta-mode agent can step back out of an invalid region.
+    so eye metrics reach the reward. Episodes end on ``all_specs_met`` (unless
+    ``terminate_on_success`` is off, in which case feasible steps keep paying
+    out until ``max_steps``) or after ``max_steps``; a DC failure is penalized
+    but does not end the episode, so a delta-mode agent can step back out of an
+    invalid region.
     """
 
     ACTION_SIZE = 5
@@ -37,6 +39,7 @@ class CtleEnvironment:
         delta_scale: float = 0.2,
         run_transient: bool = True,
         random_reset: bool = False,
+        terminate_on_success: bool = True,
     ) -> None:
         if action_mode not in self.ACTION_MODES:
             raise ValueError(f"unsupported action mode: {action_mode}")
@@ -53,6 +56,7 @@ class CtleEnvironment:
         self.delta_scale = delta_scale
         self.run_transient = run_transient and hasattr(evaluator, "run_transient")
         self.random_reset = random_reset
+        self.terminate_on_success = terminate_on_success
         self.step_count = 0
         self.design = np.zeros(self.action_size, dtype=np.float64)
         self.last_metrics: dict[str, Any] = {}
@@ -91,7 +95,7 @@ class CtleEnvironment:
         reward, diagnostics = self.reward_model.calculate(metrics)
         self.last_metrics = dict(metrics)
         self.step_count += 1
-        terminated = bool(diagnostics["all_specs_met"])
+        terminated = bool(diagnostics["all_specs_met"]) and self.terminate_on_success
         truncated = self.step_count >= self.max_steps and not terminated
         observation = self._observation(metrics, diagnostics)
         info = {"metrics": metrics, "design": self.design.copy(), **diagnostics}

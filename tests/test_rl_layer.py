@@ -41,6 +41,23 @@ def test_reward_uses_normalized_constraint_violations():
     assert info["all_specs_met"] is False
 
 
+def test_reward_margin_bonus_rewards_tightest_slack_once_feasible():
+    # valid_metrics(): peaking 6 dB has margin 1.0 (min 3 dB, norm 3) and 0.5 (max 12, norm 12),
+    # power 0.5, eye width (0.8-0.7)/0.7, eye height (0.6-0.5)/0.5 = 0.2 -> tightest is 0.143.
+    reward, info = CtleReward(efficiency_weight=0.0, margin_weight=10.0).calculate(valid_metrics())
+    assert info["margin"] == pytest.approx((0.8 - 0.7) / 0.7)
+    assert info["margin_bonus"] == pytest.approx(10.0 * (0.8 - 0.7) / 0.7)
+    assert reward == pytest.approx(20.0 + info["margin_bonus"])
+
+    metrics = valid_metrics()
+    metrics["eye_vertical_v"] = 0.4
+    reward, info = CtleReward(efficiency_weight=0.0, margin_weight=10.0).calculate(metrics)
+    assert info["all_specs_met"] is False
+    assert info["margin"] == pytest.approx(-0.2)
+    assert info["margin_bonus"] == 0.0
+    assert reward == pytest.approx(-0.2)
+
+
 def test_invalid_dc_is_immediate_heavy_penalty():
     reward, info = CtleReward().calculate({"dc_valid": False})
     assert reward == -100.0
@@ -52,6 +69,17 @@ class FakeEvaluator:
     def run_simulation(self, action):
         assert action.shape == (5,)
         return valid_metrics()
+
+
+def test_environment_can_hold_on_success_until_max_steps():
+    environment = CtleEnvironment(FakeEvaluator(), max_steps=2, terminate_on_success=False)
+    environment.reset()
+    _, reward, terminated, truncated, info = environment.step(np.zeros(5))
+    assert info["all_specs_met"] is True
+    assert reward == pytest.approx(19.5)
+    assert terminated is False and truncated is False
+    _, _, terminated, truncated, _ = environment.step(np.zeros(5))
+    assert terminated is False and truncated is True
 
 
 def test_environment_returns_gym_style_transition():
