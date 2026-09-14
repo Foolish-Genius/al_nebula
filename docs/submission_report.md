@@ -59,7 +59,7 @@ The noise result is integrated from the ngspice `inoise_spectrum` vector using t
 - 45-corner PVT sweep.
 - HD3, noise, and area measurement hooks.
 - Reproducible CSV, JSON, and PNG artifacts.
-- 24 automated tests.
+- 40 automated tests.
 
 ## Known Limitations
 
@@ -67,7 +67,11 @@ The noise result is integrated from the ngspice `inoise_spectrum` vector using t
 2. HD3 currently misses the strict target and must be optimized through topology/bias changes.
 3. Noise extraction requires final input-referred normalization and a raw-vector sanity check before it can qualify the specification.
 4. Area is a first-order active-device geometry estimate, not a post-layout area result.
-5. SAC training is intentionally not started until these measurement contracts are stable.
+5. SAC training so far uses the generic Level-1 model, not the IHP backend. Three
+   5000-step runs reached feasibility in ~85% of episodes but plateaued at the
+   eye-height boundary and did not beat random search at equal budget; the
+   margin-bonus / hold-on-success reward changes are being evaluated on a
+   longer run. Training against the IHP OSDI models is still open.
 
 ## Submission Position
 
