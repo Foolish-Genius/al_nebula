@@ -48,8 +48,10 @@ class SpiceEvaluator:
     # OpenMP threads per ngspice process; see _run_ngspice.
     NGSPICE_THREADS = 1
 
-    # Eye acceptance used by run_transient's tran_valid flag; the RL reward
-    # applies CtleSpecifications, which should agree with these.
+    # Default eye acceptance for run_transient's tran_valid flag; the RL reward
+    # applies CtleSpecifications, which should agree with these. Both were
+    # calibrated on the generic Level-1 model; PSP103 devices have roughly
+    # half the gain, so IHP training passes a lower eye_height_min_v.
     EYE_HEIGHT_MIN_V = 0.5
     EYE_WIDTH_MIN_UI = 0.7
 
@@ -70,6 +72,8 @@ class SpiceEvaluator:
         pdk_corner_path: str | Path | None = None,
         pdk_corner: str = "mos_tt",
         osdi_model_paths: tuple[str | Path, ...] = (),
+        eye_height_min_v: float | None = None,
+        eye_width_min_ui: float | None = None,
     ) -> None:
         project_root = Path(__file__).resolve().parents[1]
         self.template_path = Path(
@@ -85,6 +89,9 @@ class SpiceEvaluator:
         )
         self.pdk_corner = pdk_corner
         self.osdi_model_paths = tuple(Path(path) for path in osdi_model_paths)
+        # Eye acceptance for tran_valid; keep in step with CtleSpecifications.
+        self.eye_height_min_v = self.EYE_HEIGHT_MIN_V if eye_height_min_v is None else float(eye_height_min_v)
+        self.eye_width_min_ui = self.EYE_WIDTH_MIN_UI if eye_width_min_ui is None else float(eye_width_min_ui)
 
         self.bounds = {
             "W_in": (0.5e-6, 50.0e-6),
@@ -445,8 +452,8 @@ class SpiceEvaluator:
                 periods=self.PRBS_PERIODS,
             )
 
-            eye_height_pass = eye["eye_height_v"] >= self.EYE_HEIGHT_MIN_V
-            eye_width_pass = eye["eye_width_ui"] >= self.EYE_WIDTH_MIN_UI
+            eye_height_pass = eye["eye_height_v"] >= self.eye_height_min_v
+            eye_width_pass = eye["eye_width_ui"] >= self.eye_width_min_ui
 
             # Behavioural one-tap DFE on the UI-centre samples of the CTLE
             # output; reports the tap that opens the eye the most.
