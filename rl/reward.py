@@ -40,9 +40,9 @@ class CtleReward:
         hard_gate_failures = {
             name: 1.0
             for name in hard_gate_names
-            if name in metrics
-            and name in constraints_by_name
-            and constraints_by_name[name].violation(float(metrics[name])) > 0.0
+            if name in constraints_by_name
+            and (constraints_by_name[name].metric_name or name) in metrics
+            and constraints_by_name[name].violation(float(metrics[constraints_by_name[name].metric_name or name])) > 0.0
         }
         if hard_gate_failures:
             evaluation = {**evaluation, "all_specs_met": False, "hard_gate_failures": hard_gate_failures}

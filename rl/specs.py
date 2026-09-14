@@ -52,10 +52,11 @@ class CtleSpecifications:
     # roughly one in ten random designs satisfies every spec.
     eye_horizontal_min_ui: float = 0.7
     eye_vertical_min_v: float = 0.5
-    # Targets no simulation gate measures yet. They are kept so reports can
-    # cite them but are deliberately not enforced: an unmeasured metric would
-    # otherwise be a permanent violation that makes success unreachable.
+    # HD3 is enforced only when the environment runs the linearity gate
+    # (enforce_hd3); an unmeasured metric would otherwise be a permanent
+    # violation that makes success unreachable. Noise is report-only.
     hd3_max_db: float = -30.0
+    enforce_hd3: bool = False
     noise_max_vrms: float = 1.5e-3
     constraints: tuple[Constraint, ...] = field(init=False)
 
@@ -69,6 +70,8 @@ class CtleSpecifications:
                 Constraint("power", self.power_max_w, "max", self.power_max_w),
                 Constraint("eye_horizontal_ui", self.eye_horizontal_min_ui, "min", self.eye_horizontal_min_ui),
                 Constraint("eye_vertical_v", self.eye_vertical_min_v, "min", self.eye_vertical_min_v),
+                # A 10 dB miss counts like a fully missed eye or a doubled power budget.
+                *((Constraint("hd3", self.hd3_max_db, "max", 10.0, "hd3_db"),) if self.enforce_hd3 else ()),
             ),
         )
 

@@ -56,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--margin-weight", type=float, default=0.0, help="bonus per unit of tightest spec margin once feasible")
     parser.add_argument("--eye-height-min", type=float, default=None, help="eye height spec in V (default: CtleSpecifications)")
     parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
+    parser.add_argument("--hd3", action="store_true", help="enforce the HD3 spec: run the linearity gate once the other specs pass")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--gradient-steps", type=int, default=1, help="-1 matches the number of env steps per rollout")
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -70,7 +71,7 @@ def build_specifications(config: dict) -> CtleSpecifications:
         for key, name in (("eye_vertical_min_v", "eye_height_min"), ("eye_horizontal_min_ui", "eye_width_min"))
         if config.get(name) is not None
     }
-    return CtleSpecifications(**overrides)
+    return CtleSpecifications(enforce_hd3=bool(config.get("hd3")), **overrides)
 
 
 def build_evaluator(config: dict) -> SpiceEvaluator:
@@ -101,6 +102,7 @@ def build_env(config: dict):
         run_transient=config["run_transient"],
         random_reset=config["random_reset"],
         terminate_on_success=config["terminate_on_success"],
+        run_linearity=bool(config.get("hd3")),
     )
     return make_gym_env(environment)
 
@@ -126,6 +128,7 @@ def main() -> None:
         "pdk_root": args.pdk_root,
         "eye_height_min": args.eye_height_min,
         "eye_width_min": args.eye_width_min,
+        "hd3": args.hd3,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
         "margin_weight": args.margin_weight,
@@ -210,6 +213,7 @@ def main() -> None:
     # Validate the best design the same way run_validation.py does, PVT included.
     ac_result = evaluator.run_simulation(best.best_design)
     transient_result = evaluator.run_transient(best.best_design)
+    linearity_result = evaluator.run_linearity(best.best_design)
     pvt_results = evaluator.run_pvt(best.best_design, all_pvt_corners())
     pvt_passed = sum(bool(row["pvt_pass"]) for row in pvt_results)
     metrics = {
@@ -224,6 +228,9 @@ def main() -> None:
         "eye_width_ui": transient_result["eye_width_ui"],
         "eye_center_ui": transient_result["eye_center_ui"],
         "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
+        "hd3_db": linearity_result["hd3_db"],
+        "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < specifications.hd3_max_db),
+        "hd3_enforced": args.hd3,
         "transient_error": transient_result.get("error"),
         "model_source": evaluator.model_source,
         "optimizer": "sac",
