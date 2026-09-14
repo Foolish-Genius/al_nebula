@@ -10,6 +10,8 @@
 - `rl/gym_wrapper.py`, `rl/threaded_vec_env.py`: gymnasium adapter and thread-parallel VecEnv.
 - `scripts/run_validation.py`: reproducible generic/IHP pipeline entry point.
 - `scripts/train_sac.py`, `scripts/sac_progress.py`: SAC training and run summaries.
+- `scripts/evaluate_policy.py`: deterministic rollouts of a checkpoint plus the random-search comparison.
+- `tools/openvaf-link-shim/`: builds the IHP OSDI models on Windows without MSVC.
 - `scripts/baseline_random.py`: random-search baseline at the same simulation budget.
 - `analysis/reporting.py`: CSV, JSON, and PNG artifact writer.
 - `tests/`: active regression suite.
