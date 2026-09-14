@@ -27,6 +27,16 @@ class Constraint:
             return max(0.0, (value - self.target) / self.norm_factor)
         raise ValueError(f"unsupported constraint direction: {self.direction}")
 
+    def margin(self, value: float) -> float:
+        """Signed normalized slack: positive inside the spec, negative outside."""
+        if not np.isfinite(value):
+            return -1.0
+        if self.direction == "min":
+            return (value - self.target) / self.norm_factor
+        if self.direction == "max":
+            return (self.target - value) / self.norm_factor
+        raise ValueError(f"unsupported constraint direction: {self.direction}")
+
 
 @dataclass(frozen=True)
 class CtleSpecifications:
@@ -70,7 +80,14 @@ class CtleSpecifications:
             )
             for constraint in self.constraints
         }
+        margins = {
+            constraint.name: constraint.margin(
+                float(metrics.get(constraint.metric_name or constraint.name, np.nan))
+            )
+            for constraint in self.constraints
+        }
         return {
             "violations": violations,
+            "margins": margins,
             "all_specs_met": bool(all(value <= 0.0 for value in violations.values())),
         }
