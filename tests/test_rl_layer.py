@@ -71,6 +71,72 @@ class FakeEvaluator:
         return valid_metrics()
 
 
+def test_hd3_constraint_only_when_enforced():
+    assert "hd3" not in {c.name for c in CtleSpecifications().constraints}
+    specs = CtleSpecifications(enforce_hd3=True)
+    assert [c.name for c in specs.constraints][-1] == "hd3"
+    metrics = {**valid_metrics(), "hd3_db": -35.0}
+    assert specs.evaluate(metrics)["all_specs_met"] is True
+    metrics["hd3_db"] = -25.0
+    result = specs.evaluate(metrics)
+    assert result["all_specs_met"] is False
+    assert result["violations"]["hd3"] == pytest.approx(0.5)  # 5 dB over, normalised by 10 dB
+    # Unmeasured HD3 is a full violation, so a feasible-looking design cannot succeed.
+    assert specs.evaluate(valid_metrics())["violations"]["hd3"] == 1.0
+
+
+def test_reward_hard_gate_reads_hd3_by_metric_name():
+    reward = CtleReward(specifications=CtleSpecifications(enforce_hd3=True), efficiency_weight=0.0)
+    value, info = reward.calculate({**valid_metrics(), "hd3_db": -25.0})
+    assert info["hard_gate_failures"] == {"hd3": 1.0}
+    assert info["all_specs_met"] is False
+    assert value == pytest.approx(-0.5)
+
+
+class LinearityEvaluator(FakeEvaluator):
+    def __init__(self, hd3_db=-35.0):
+        self.hd3_db = hd3_db
+        self.linearity_calls = 0
+
+    def run_transient(self, action):
+        return {"eye_height_v": 0.6, "eye_width_ui": 0.8, "tran_valid": True, "error": None}
+
+    def run_linearity(self, action):
+        self.linearity_calls += 1
+        return {"hd3_db": self.hd3_db, "linearity_valid": True, "error": None}
+
+
+def test_environment_runs_linearity_only_when_other_specs_pass():
+    evaluator = LinearityEvaluator(hd3_db=-35.0)
+    reward = CtleReward(specifications=CtleSpecifications(enforce_hd3=True))
+    environment = CtleEnvironment(evaluator, reward_model=reward, max_steps=3, run_linearity=True)
+    environment.reset()
+    _, _, terminated, _, info = environment.step(np.zeros(5))
+    assert evaluator.linearity_calls == 1
+    assert info["metrics"]["hd3_db"] == -35.0
+    assert info["all_specs_met"] is True and terminated is True
+
+    # Power over budget: the linearity gate is skipped and HD3 stays unmeasured.
+    class OverPower(LinearityEvaluator):
+        def run_simulation(self, action):
+            return {**valid_metrics(), "power": 3e-3}
+
+    evaluator = OverPower()
+    environment = CtleEnvironment(evaluator, reward_model=reward, max_steps=3, run_linearity=True)
+    environment.reset()
+    _, _, _, _, info = environment.step(np.zeros(5))
+    assert evaluator.linearity_calls == 0
+    assert "hd3_db" not in info["metrics"]
+    assert info["violations"]["hd3"] == 1.0
+
+    # Without run_linearity the gate never runs even when enforced.
+    evaluator = LinearityEvaluator()
+    environment = CtleEnvironment(evaluator, reward_model=reward, max_steps=3)
+    environment.reset()
+    environment.step(np.zeros(5))
+    assert evaluator.linearity_calls == 0
+
+
 def test_environment_can_hold_on_success_until_max_steps():
     environment = CtleEnvironment(FakeEvaluator(), max_steps=2, terminate_on_success=False)
     environment.reset()

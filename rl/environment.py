@@ -18,7 +18,9 @@ class CtleEnvironment:
     in ``"absolute"`` mode each action replaces the design vector outright.
 
     Every step runs the DC/AC gate and, when it passes, the transient PRBS gate
-    so eye metrics reach the reward. Episodes end on ``all_specs_met`` (unless
+    so eye metrics reach the reward. With ``run_linearity`` the HD3 gate runs
+    too, but only once every other spec passes, so it costs one extra
+    simulation per otherwise-feasible step rather than per step. Episodes end on ``all_specs_met`` (unless
     ``terminate_on_success`` is off, in which case feasible steps keep paying
     out until ``max_steps``) or after ``max_steps``; a DC failure is penalized
     but does not end the episode, so a delta-mode agent can step back out of an
@@ -40,6 +42,7 @@ class CtleEnvironment:
         run_transient: bool = True,
         random_reset: bool = False,
         terminate_on_success: bool = True,
+        run_linearity: bool = False,
     ) -> None:
         if action_mode not in self.ACTION_MODES:
             raise ValueError(f"unsupported action mode: {action_mode}")
@@ -55,6 +58,7 @@ class CtleEnvironment:
         self.action_mode = action_mode
         self.delta_scale = delta_scale
         self.run_transient = run_transient and hasattr(evaluator, "run_transient")
+        self.run_linearity = run_linearity and hasattr(evaluator, "run_linearity")
         self.random_reset = random_reset
         self.terminate_on_success = terminate_on_success
         self.step_count = 0
@@ -118,7 +122,16 @@ class CtleEnvironment:
         metrics["eye_horizontal_ui"] = transient.get("eye_width_ui", np.nan)
         metrics["tran_valid"] = transient.get("tran_valid", False)
         metrics["transient_error"] = transient.get("error")
+        if self.run_linearity and self._others_pass(metrics, except_name="hd3"):
+            linearity = self.evaluator.run_linearity(design)
+            metrics["hd3_db"] = linearity.get("hd3_db", np.nan)
+            metrics["linearity_error"] = linearity.get("error")
         return metrics
+
+    def _others_pass(self, metrics: dict[str, Any], except_name: str) -> bool:
+        """True when every constraint other than ``except_name`` is satisfied."""
+        violations = self.reward_model.specifications.evaluate(metrics)["violations"]
+        return all(value <= 0.0 for name, value in violations.items() if name != except_name)
 
     @property
     def observation_size(self) -> int:
