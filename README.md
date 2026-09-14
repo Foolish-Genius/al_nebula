@@ -25,7 +25,9 @@ Phase 1 of AutoAnalog-RL: a parameterized IHP sg13g2 CTLE netlist, fail-fast ngs
 
 The pre-ML pipeline is complete through CTLE sizing, IHP PSP103 simulation,
 PRBS transient/eye validation, behavioral one-tap DFE, HD3/noise/area hooks, and
-45-corner PVT. SAC/RL training is the next phase.
+45-corner PVT. SAC training runs on the generic Level-1 model; the first
+5000-step runs matched random search, and the reward/episode changes below
+(margin bonus, hold-on-success) are the current fix under evaluation.
 
 HD3 and noise targets are recorded in `CtleSpecifications`; the linearity and
 noise gates in `run_validation.py` report them. The simulator adapter should
@@ -47,6 +49,20 @@ it writes checkpoints, a per-step CSV, and the same validation artifact set as
 pip install -e .[rl]
 python scripts/train_sac.py --timesteps 2000 --output-dir reports/sac
 ```
+
+The defaults reproduce the first runs (terminate on the first feasible design,
+one environment). For a converged policy use several environments and let the
+episode continue after success so the agent is rewarded for spec margin:
+
+```bash
+python scripts/train_sac.py --timesteps 30000 --n-envs 8 --hold-on-success   --random-reset --margin-weight 5 --invalid-penalty -10 --max-steps 30   --batch-size 256 --gradient-steps -1 --ent-coef auto_0.1   --output-dir reports/sac-long
+python scripts/sac_progress.py reports/sac-long
+```
+
+`--n-envs` uses threads (`rl/threaded_vec_env.py`) rather than `SubprocVecEnv`:
+ngspice runs in a subprocess that releases the GIL, and on Windows eight
+spawned workers each loading CUDA torch fails DLL initialisation. Training is
+simulator-bound; the GPU only runs the SAC networks.
 
 The IHP Open PDK is installed locally. Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
 binary does not support as a built-in model. The PDK includes Verilog-A sources
