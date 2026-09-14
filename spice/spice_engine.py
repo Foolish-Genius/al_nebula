@@ -45,6 +45,9 @@ class SpiceEvaluator:
     CHANNEL_POLE_HZ = 1.7e9
     CHANNEL_SECTION_OHMS = (50.0, 500.0)
 
+    # OpenMP threads per ngspice process; see _run_ngspice.
+    NGSPICE_THREADS = 1
+
     # Eye acceptance used by run_transient's tran_valid flag; the RL reward
     # applies CtleSpecifications, which should agree with these.
     EYE_HEIGHT_MIN_V = 0.5
@@ -90,6 +93,49 @@ class SpiceEvaluator:
             "R_s": (10.0, 500.0),
             "C_s": (1.0e-15, 1.0e-12),
         }
+
+    # Files under <pdk_root>/ihp-sg13g2/libs.tech/ngspice that the IHP path needs.
+    PDK_MODEL_LIB = "models/sg13g2_moslv_mod.lib"
+    PDK_CORNER_LIB = "models/cornerMOSlv.lib"
+    PDK_OSDI_MODELS = ("osdi/psp103.osdi", "osdi/psp103_nqs.osdi", "osdi/mosvar.osdi")
+
+    @classmethod
+    def for_model_source(
+        cls,
+        model_source: str = "generic",
+        ngspice_binary: str | None = None,
+        pdk_root: str | Path | None = None,
+        **kwargs: Any,
+    ) -> "SpiceEvaluator":
+        """Build an evaluator for the generic Level-1 model or the IHP sg13g2 PSP103 OSDI models.
+
+        ``pdk_root`` (or ``$IHP_PDK_ROOT``) is an IHP Open PDK checkout whose
+        ``libs.tech/ngspice/osdi`` holds the OpenVAF-compiled models; see
+        ``scripts/check_pdk.py``.
+        """
+        if model_source == "generic":
+            return cls(ngspice_binary=ngspice_binary, **kwargs)
+        if model_source != "ihp":
+            raise ValueError(f"unsupported model source: {model_source}")
+        root = pdk_root or os.environ.get("IHP_PDK_ROOT")
+        if not root:
+            raise ValueError("model_source='ihp' needs pdk_root or $IHP_PDK_ROOT")
+        ngspice_dir = Path(root) / "ihp-sg13g2" / "libs.tech" / "ngspice"
+        osdi_paths = tuple(ngspice_dir / name for name in cls.PDK_OSDI_MODELS)
+        missing = [str(path) for path in (ngspice_dir / cls.PDK_MODEL_LIB, ngspice_dir / cls.PDK_CORNER_LIB, *osdi_paths) if not path.exists()]
+        if missing:
+            raise FileNotFoundError("IHP PDK files missing (run scripts/check_pdk.py): " + ", ".join(missing))
+        return cls(
+            ngspice_binary=ngspice_binary,
+            pdk_model_path=ngspice_dir / cls.PDK_MODEL_LIB,
+            pdk_corner_path=ngspice_dir / cls.PDK_CORNER_LIB,
+            osdi_model_paths=osdi_paths,
+            **kwargs,
+        )
+
+    @property
+    def model_source(self) -> str:
+        return "ihp_ngspice" if self.osdi_model_paths else "ngspice_generic_level1"
 
     def map_actions(self, actions: np.ndarray) -> dict[str, float]:
         """Linearly map five normalized actions from [-1, 1] to SI values."""
@@ -719,15 +765,13 @@ class SpiceEvaluator:
             encoding="utf-8",
         )
 
-        if self.osdi_model_paths:
-            (stem.parent / ".spiceinit").write_text(
-                "\n".join(
-                    f"osdi '{path}'"
-                    for path in self.osdi_model_paths
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+        # ngspice ignores OMP_NUM_THREADS and spins its own OpenMP pool per
+        # process; with several evaluators running in parallel (training) the
+        # spin-waiting threads oversubscribe the cores and PSP103 transients
+        # go from ~1.5 s to ~90 s each. One thread per process is fastest.
+        spiceinit = [f"set num_threads={self.NGSPICE_THREADS}"]
+        spiceinit += [f"osdi '{path}'" for path in self.osdi_model_paths]
+        (stem.parent / ".spiceinit").write_text("\n".join(spiceinit) + "\n", encoding="utf-8")
 
         completed = subprocess.run(
             [

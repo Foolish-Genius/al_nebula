@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output-dir", default="reports/baseline")
     parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
+    parser.add_argument("--model-source", choices=("generic", "ihp"), default="generic")
+    parser.add_argument("--pdk-root", default=None, help="IHP Open PDK checkout (default: $IHP_PDK_ROOT)")
     return parser.parse_args()
 
 
@@ -41,7 +43,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    evaluator = SpiceEvaluator(ngspice_binary=args.ngspice)
+    evaluator = SpiceEvaluator.for_model_source(args.model_source, ngspice_binary=args.ngspice, pdk_root=args.pdk_root)
     environment = CtleEnvironment(evaluator, action_mode="absolute", max_steps=1)
     rng = np.random.default_rng(args.seed)
 
@@ -93,7 +95,7 @@ def main() -> None:
         "eye_center_ui": transient_result["eye_center_ui"],
         "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
         "transient_error": transient_result.get("error"),
-        "model_source": "ngspice_generic_level1",
+        "model_source": evaluator.model_source,
         "optimizer": "random",
         "timesteps": args.evaluations,
         "best_training_reward": float(best_reward),
