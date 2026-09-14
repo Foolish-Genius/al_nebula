@@ -25,6 +25,7 @@ from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.gym_wrapper import make_gym_env
 from rl.reward import CtleReward
+from rl.specs import CtleSpecifications
 from rl.pvt import all_pvt_corners
 from spice.spice_engine import SpiceEvaluator
 
@@ -53,6 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--invalid-penalty", type=float, default=-100.0, help="reward for a DC-invalid design")
     parser.add_argument("--success-bonus", type=float, default=20.0)
     parser.add_argument("--margin-weight", type=float, default=0.0, help="bonus per unit of tightest spec margin once feasible")
+    parser.add_argument("--eye-height-min", type=float, default=None, help="eye height spec in V (default: CtleSpecifications)")
+    parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--gradient-steps", type=int, default=1, help="-1 matches the number of env steps per rollout")
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -61,10 +64,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def build_specifications(config: dict) -> CtleSpecifications:
+    overrides = {
+        key: config[name]
+        for key, name in (("eye_vertical_min_v", "eye_height_min"), ("eye_horizontal_min_ui", "eye_width_min"))
+        if config.get(name) is not None
+    }
+    return CtleSpecifications(**overrides)
+
+
+def build_evaluator(config: dict) -> SpiceEvaluator:
+    specs = build_specifications(config)
+    return SpiceEvaluator.for_model_source(
+        config["model_source"],
+        ngspice_binary=config["ngspice"],
+        pdk_root=config["pdk_root"],
+        eye_height_min_v=specs.eye_vertical_min_v,
+        eye_width_min_ui=specs.eye_horizontal_min_ui,
+    )
+
+
 def build_env(config: dict):
-    """Build one gym env from plain config so SubprocVecEnv can pickle the factory."""
-    evaluator = SpiceEvaluator.for_model_source(config["model_source"], ngspice_binary=config["ngspice"], pdk_root=config["pdk_root"])
+    """Build one gym env from plain config so the vec env factory only needs plain data."""
+    evaluator = build_evaluator(config)
     reward = CtleReward(
+        specifications=build_specifications(config),
         invalid_penalty=config["invalid_penalty"],
         success_bonus=config["success_bonus"],
         margin_weight=config["margin_weight"],
@@ -100,6 +124,8 @@ def main() -> None:
         "ngspice": args.ngspice,
         "model_source": args.model_source,
         "pdk_root": args.pdk_root,
+        "eye_height_min": args.eye_height_min,
+        "eye_width_min": args.eye_width_min,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
         "margin_weight": args.margin_weight,
@@ -110,7 +136,8 @@ def main() -> None:
         "terminate_on_success": not args.hold_on_success,
     }
     (output_dir / "config.json").write_text(json.dumps({**vars(args), **env_config}, indent=2), encoding="utf-8")
-    evaluator = SpiceEvaluator.for_model_source(args.model_source, ngspice_binary=args.ngspice, pdk_root=args.pdk_root)
+    evaluator = build_evaluator(env_config)
+    specifications = build_specifications(env_config)
     env = make_vec_env(
         functools.partial(build_env, env_config),
         n_envs=args.n_envs,
@@ -205,6 +232,8 @@ def main() -> None:
         "n_envs": args.n_envs,
         "hold_on_success": args.hold_on_success,
         "margin_weight": args.margin_weight,
+        "eye_height_min_v": specifications.eye_vertical_min_v,
+        "eye_width_min_ui": specifications.eye_horizontal_min_ui,
         "best_training_reward": best.best_reward,
         "selected_action": best.best_design.tolist(),
         "parameters": evaluator.map_actions(best.best_design),
