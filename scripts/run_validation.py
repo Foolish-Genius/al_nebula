@@ -1,7 +1,6 @@
 """Run one candidate and write all available validation artifacts."""
 
 import argparse
-import os
 from pathlib import Path
 import sys
 
@@ -22,18 +21,7 @@ def main(
     ngspice: str | None = None,
     pdk_root: str | None = None,
 ) -> None:
-    if model_source == "ihp":
-        root = Path(pdk_root or os.environ.get("IHP_PDK_ROOT", "/home/hp/ihp-open-pdk"))
-        model_dir = root / "ihp-sg13g2" / "libs.tech" / "ngspice" / "models"
-        osdi_dir = root / "ihp-sg13g2" / "libs.tech" / "ngspice" / "osdi"
-        evaluator = SpiceEvaluator(
-            ngspice_binary=ngspice,
-            pdk_model_path=model_dir / "sg13g2_moslv_mod.lib",
-            pdk_corner_path=model_dir / "cornerMOSlv.lib",
-            osdi_model_paths=(osdi_dir / "psp103.osdi", osdi_dir / "psp103_nqs.osdi", osdi_dir / "mosvar.osdi"),
-        )
-    else:
-        evaluator = SpiceEvaluator(ngspice_binary=ngspice)
+    evaluator = SpiceEvaluator.for_model_source(model_source, ngspice_binary=ngspice, pdk_root=pdk_root)
     action, search_rows = BoundedDesignSearch(evaluator, seed=23).run(evaluations=100)
     ac_result = evaluator.run_simulation(action)
     transient_result = evaluator.run_transient(action)
@@ -75,7 +63,7 @@ def main(
         "eye_center_ui": transient_result.get("eye_center_ui"),
         "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
         "transient_error": transient_result.get("error"),
-        "model_source": f"{model_source}_ngspice",
+        "model_source": evaluator.model_source,
         "selected_action": action.tolist(),
         "search_evaluations": len(search_rows),
         "pvt_corner_count": len(pvt_results),

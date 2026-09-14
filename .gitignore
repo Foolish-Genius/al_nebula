@@ -8,3 +8,5 @@ reports/runs/
 reports/sac*/
 reports/baseline*/
 reports/*.log
+tools/openvaf-link-shim/*.o
+tools/openvaf-link-shim/*.exe

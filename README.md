@@ -64,29 +64,36 @@ ngspice runs in a subprocess that releases the GIL, and on Windows eight
 spawned workers each loading CUDA torch fails DLL initialisation. Training is
 simulator-bound; the GPU only runs the SAC networks.
 
-The IHP Open PDK is installed locally. Its sg13g2 transistor deck uses PSP103, which the packaged ngspice
-binary does not support as a built-in model. The PDK includes Verilog-A sources
-and an OpenVAF build script. The intended ngspice path is: install OpenVAF with
-its LLVM 21.1 runtime, run `libs.tech/verilog-a/openvaf-compile-va.sh`, then
-pass the generated `psp103.osdi` and `psp103_nqs.osdi` files using
-`SpiceEvaluator(osdi_model_paths=(...))`. Run `python scripts/check_pdk.py` to
-check readiness. The default runner uses an explicit ngspice Level-1 model to
-validate the architecture and data flow; reports label this model source
-clearly. Xyce is not required once the OSDI models are compiled.
+The sg13g2 transistor deck of the IHP Open PDK uses PSP103, which ngspice
+loads as OpenVAF-compiled OSDI models. Set `IHP_PDK_ROOT` to a PDK checkout
+whose `ihp-sg13g2/libs.tech/ngspice/osdi/` holds `psp103.osdi`,
+`psp103_nqs.osdi` and `mosvar.osdi` (compile them with
+`libs.tech/verilog-a/openvaf-compile-va.sh`; on Windows without Visual
+Studio's C++ tools see `tools/openvaf-link-shim/README.md`). Run
+`python scripts/check_pdk.py` to check readiness. ngspice 44+ on Linux and
+the ngspice 47 Windows build both load the models directly;
+`SpiceEvaluator.for_model_source("ihp")` wires the corner libraries and OSDI
+files, and every script takes `--model-source ihp --pdk-root <checkout>`.
+The default `generic` runner uses ngspice's Level-1 model to validate the
+architecture and data flow; reports label the model source. Xyce is not
+required.
 Run `python scripts/run_validation.py --output-dir reports/runs/latest` to
 regenerate the complete artifact set without overwriting an earlier run. The
 PVT CSV and graph contain all 45 simulated corners with pass/fail status. See
 `papers/README.md` for the supplied paper's CTLE design takeaways and references.
 
-For final IHP PSP103 validation, use an OSDI-capable ngspice build and point
-`--pdk-root` (or `IHP_PDK_ROOT`) at the IHP Open PDK checkout:
+For IHP PSP103 validation or training:
 
 ```bash
-python scripts/run_validation.py --model-source ihp 	--ngspice /path/to/osdi-capable/ngspice 	--pdk-root /path/to/ihp-open-pdk 	--output-dir reports/runs/ihp-final
+python scripts/run_validation.py --model-source ihp --pdk-root /path/to/ihp-open-pdk   --output-dir reports/runs/ihp-final
+python scripts/train_sac.py --model-source ihp --n-envs 8 ... --output-dir reports/sac-ihp
 ```
 
-This uses OpenVAF-compiled `psp103.osdi` models with the sg13g2 MOS corner
-libraries. The generic Level-1 path remains available for fast debugging.
+Each ngspice process is pinned to one OpenMP thread (`set num_threads=1` in
+the generated `.spiceinit`); ngspice ignores `OMP_NUM_THREADS`, and with
+several simulators in flight its spin-waiting threads made PSP103 transients
+sixty times slower. The generic Level-1 path remains available for fast
+debugging.
 
 The current real-IHP run passes DC, AC peaking, eye, power, area estimate,
 input-referred noise, and all 45 PVT corners. HD3 remains the measured strict

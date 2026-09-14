@@ -41,6 +41,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every", type=int, default=500)
     parser.add_argument("--output-dir", default="reports/sac")
     parser.add_argument("--ngspice", default=None, help="ngspice executable (default: $NGSPICE or ngspice on PATH)")
+    parser.add_argument("--model-source", choices=("generic", "ihp"), default="generic")
+    parser.add_argument("--pdk-root", default=None, help="IHP Open PDK checkout (default: $IHP_PDK_ROOT)")
     parser.add_argument("--device", default="auto", help="torch device for SAC: auto, cpu, or cuda")
     parser.add_argument("--n-envs", type=int, default=1, help="parallel environments (threads, each driving its own ngspice)")
     parser.add_argument(
@@ -61,7 +63,7 @@ def parse_args() -> argparse.Namespace:
 
 def build_env(config: dict):
     """Build one gym env from plain config so SubprocVecEnv can pickle the factory."""
-    evaluator = SpiceEvaluator(ngspice_binary=config["ngspice"])
+    evaluator = SpiceEvaluator.for_model_source(config["model_source"], ngspice_binary=config["ngspice"], pdk_root=config["pdk_root"])
     reward = CtleReward(
         invalid_penalty=config["invalid_penalty"],
         success_bonus=config["success_bonus"],
@@ -96,6 +98,8 @@ def main() -> None:
 
     env_config = {
         "ngspice": args.ngspice,
+        "model_source": args.model_source,
+        "pdk_root": args.pdk_root,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
         "margin_weight": args.margin_weight,
@@ -106,7 +110,7 @@ def main() -> None:
         "terminate_on_success": not args.hold_on_success,
     }
     (output_dir / "config.json").write_text(json.dumps({**vars(args), **env_config}, indent=2), encoding="utf-8")
-    evaluator = SpiceEvaluator(ngspice_binary=args.ngspice)
+    evaluator = SpiceEvaluator.for_model_source(args.model_source, ngspice_binary=args.ngspice, pdk_root=args.pdk_root)
     env = make_vec_env(
         functools.partial(build_env, env_config),
         n_envs=args.n_envs,
@@ -194,7 +198,7 @@ def main() -> None:
         "eye_center_ui": transient_result["eye_center_ui"],
         "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
         "transient_error": transient_result.get("error"),
-        "model_source": "ngspice_generic_level1",
+        "model_source": evaluator.model_source,
         "optimizer": "sac",
         "device": str(model.device),
         "timesteps": args.timesteps,
