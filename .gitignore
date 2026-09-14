@@ -10,3 +10,4 @@ reports/baseline*/
 reports/*.log
 tools/openvaf-link-shim/*.o
 tools/openvaf-link-shim/*.exe
+reports/eval-*/

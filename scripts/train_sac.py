@@ -76,10 +76,11 @@ def build_specifications(config: dict) -> CtleSpecifications:
 
 def build_evaluator(config: dict) -> SpiceEvaluator:
     specs = build_specifications(config)
+    # .get() so config.json from runs that predate a flag still loads.
     return SpiceEvaluator.for_model_source(
-        config["model_source"],
-        ngspice_binary=config["ngspice"],
-        pdk_root=config["pdk_root"],
+        config.get("model_source", "generic"),
+        ngspice_binary=config.get("ngspice"),
+        pdk_root=config.get("pdk_root"),
         eye_height_min_v=specs.eye_vertical_min_v,
         eye_width_min_ui=specs.eye_horizontal_min_ui,
     )
