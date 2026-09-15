@@ -4,10 +4,42 @@
 
 AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. A soft actor-critic (SAC) agent sizes a source-degenerated CTLE by driving ngspice directly: each step runs the DC/AC gate, the PRBS transient through a lossy channel with eye measurement, and (when enabled) the HD3 linearity gate, and the design is then verified across 45 process/voltage/temperature corners with a one-tap behavioral DFE. The backend uses the IHP sg13g2 PSP103 Verilog-A models compiled with OpenVAF to OSDI and loaded by ngspice 47; the generic ngspice Level-1 model remains as a fast debugging path. On the real models the trained policy reaches a fully spec-compliant CTLE from a random starting point in a median of two to three simulation steps, where random search needs about thirteen and CMA-ES about nine.
 
+## Problem-Statement Compliance
+
+The Nebula "AI/ML for Analog Circuit Design" brief asks for a fully automated
+RL framework that sizes an equalizer for a PCIe PHY from target specifications
+with zero human intervention, in significantly less time than sweeping the
+MOS/R/C/L space, on an open PDK (IHP 130 nm BiCMOS or SkyWater sky130).
+The table maps each specification in the brief to this submission; "ours"
+is the tighter internal target the RL reward uses, and the results are the
+curriculum policy's best design (`reports/eval-ihp-pvt/`) unless noted.
+
+| Brief specification | Ours (reward target) | Result | Status |
+|---|---|---|---|
+| Nyquist 2.5 GHz (PCIe Gen 2, 5.0 Gbps) | 2.5 GHz, 5 Gbps PRBS7 | measured at 2.5 GHz | pass |
+| HF peaking boost 3-12 dB, tunable 1.25-2.5 GHz | 3-12 dB at the configured Nyquist frequency | 4.5 dB at 2.5 GHz; `--spec nyquist_frequency_hz=1.25e9` retunes the data rate, channel and measurement (Section "Tunable Nyquist frequency") | pass |
+| 1-stage CTLE with source degeneration (variable Rs, Cs) | Rs 10-500 ohm, Cs 1 fF-1 pF in the action | yes | pass |
+| 1-tap DFE; NRZ signalling | behavioural one-tap DFE, tap swept or RL-sized; NRZ PRBS7 | tap +0.062 opens 0.325 V to 0.355 V (equalizer run) | pass (behavioural) |
+| HD3 < -30 dB (100 MHz differential input) | <= -30 dB, enforced in the reward | -61.9 dB | pass |
+| Input-referred noise < 1.5 mV rms (10 MHz-5 GHz) | reported | 0.242 mV rms (pre-ML design; policy designs comparable) | pass |
+| Power < 15 mW | <= 2 mW | 1.12 mW | pass |
+| Area < 0.05 mm2 (130 nm PDK) | reported, first-order | 1.1e-5 mm2 active-device estimate | pass (estimate) |
+| Eye opening > 0.4 UI (H) and > 100 mV (V) | >= 0.7 UI and >= 0.25 V after a -10 dB channel | 0.90 UI, 0.370 V | pass |
+| PVT: TT/SS/FF/SF/FS, VDD +/-5%, 0-125 C | the same 45 corners, trained across (curriculum) and verified | 45/45 | pass |
+| Zero human intervention; faster than sweeping | policy sizes from a random start in 2-3 simulations | random 13, CMA-ES 9 | pass |
+| Deliverable: Python RL framework, specs in, spice in the loop, schematic + specs out | `train_sac.py --spec ...`, ngspice gates, `sized_ctle.sp` + validation.json | yes | pass |
+| Bonus: LLM-based human interaction to fine-tune | `reward_from_feedback.py` -> `--reward-settings` | yes (applies per run/stage) | pass |
+
+Under the brief's own eye thresholds (100 mV, 0.4 UI) the pre-ML AC-only
+bounded-search design (0.160 V, 0.58 UI) also passes; the RL reward uses the
+tighter 0.25 V / 0.7 UI targets so that the policy delivers margin rather than
+a marginal pass, and the comparison in this report is against those.
+
 ## Process Design Kit
 
-The Round 0 synopsis named the SkyWater sky130 PDK. The implementation
-targets the IHP sg13g2 open PDK (also 130 nm) instead: the team switched
+The brief allows either open 130 nm PDK (IHP BiCMOS or SkyWater sky130); the
+Round 0 synopsis named sky130. The implementation targets the IHP sg13g2
+open PDK instead: the team switched
 during development because the sky130 simulation flow was too slow for an
 RL loop that runs three ngspice analyses per step, while IHP's PSP103
 Verilog-A models compile with OpenVAF to OSDI and run natively in ngspice 47

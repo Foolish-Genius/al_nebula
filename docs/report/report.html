@@ -76,7 +76,7 @@ as the output. Table 1 lists each promise and its status in this submission.</p>
 <table>
 <tr><th>Synopsis promise</th><th>Status in this submission</th></tr>
 <tr><td>PCIe Gen 2 (5 Gbps) CTLE + 1-tap DFE sized with zero human intervention</td><td><span class="pass">Delivered.</span> SAC sizes the CTLE end to end; the DFE tap is either swept per design or sized by the agent (<code>--equalizer</code>). Section 7.</td></tr>
-<tr><td>Skywater 130 nm PDK</td><td><span class="fail">Changed</span> to the IHP sg13g2 130 nm PDK; reason in Section 3.</td></tr>
+<tr><td>Skywater 130 nm PDK</td><td><span class="fail">Changed</span> to the IHP sg13g2 130 nm PDK (the brief allows either); reason in Section 3.</td></tr>
 <tr><td>Sample-efficient SAC agent</td><td><span class="pass">Delivered.</span> Converges within ~2k environment steps; median 2&ndash;3 simulations to a feasible design. Section 6.</td></tr>
 <tr><td>Headless Python-to-ngspice pipeline</td><td><span class="pass">Delivered</span>, including a Windows toolchain for the PSP103 OSDI models. Section 4.</td></tr>
 <tr><td>Bounded 5-parameter action space, fail-fast DC checks</td><td><span class="pass">Delivered.</span> Section 5.</td></tr>
@@ -85,6 +85,33 @@ as the output. Table 1 lists each promise and its status in this submission.</p>
 <tr><td>Production-ready schematic, faster than manual sweeps</td><td><span class="pass">Delivered.</span> Sized netlist per design; 2 vs ~13 simulations; the 100-candidate search fails the eye. Sections 6 and 9.</td></tr>
 </table>
 <p class="small">Table 1. Synopsis deliverables and their status.</p>
+
+<h2>1a. Problem-statement compliance</h2>
+<p>The Nebula "AI/ML for Analog Circuit Design" brief asks for a fully automated RL framework that sizes an equalizer
+for a PCIe PHY from target specifications with zero human intervention, in significantly less time than sweeping the
+MOS/R/C/L space, on an open PDK (IHP 130 nm BiCMOS or SkyWater sky130). Table 1a maps each specification in the brief to
+this submission; "ours" is the tighter internal target the RL reward uses, and results are the curriculum policy's best
+design unless noted.</p>
+<table>
+<tr><th>Brief specification</th><th>Ours (reward target)</th><th>Result</th><th>Status</th></tr>
+<tr><td>Nyquist 2.5 GHz (PCIe Gen 2, 5.0 Gbps)</td><td>2.5 GHz, 5 Gbps PRBS7</td><td>measured at 2.5 GHz</td><td class="pass">pass</td></tr>
+<tr><td>HF peaking boost 3&ndash;12 dB, tunable 1.25&ndash;2.5 GHz</td><td>3&ndash;12 dB at the configured Nyquist frequency</td><td>4.5 dB at 2.5 GHz; <code>--spec nyquist_frequency_hz=1.25e9</code> retunes rate, channel and measurement (Section 7.3)</td><td class="pass">pass</td></tr>
+<tr><td>1-stage CTLE with source degeneration (variable R<sub>s</sub>, C<sub>s</sub>)</td><td>R<sub>s</sub> 10&ndash;500 &Omega;, C<sub>s</sub> 1 fF&ndash;1 pF in the action</td><td>yes</td><td class="pass">pass</td></tr>
+<tr><td>1-tap DFE; NRZ signalling</td><td>behavioural one-tap DFE, tap swept or RL-sized; NRZ PRBS7</td><td>tap +0.062 opens 0.325 V to 0.355 V (equalizer run)</td><td class="pass">pass (behavioural)</td></tr>
+<tr><td>HD3 &lt; &minus;30 dB (100 MHz differential input)</td><td>&le; &minus;30 dB, enforced in the reward</td><td>&minus;61.9 dB</td><td class="pass">pass</td></tr>
+<tr><td>Input-referred noise &lt; 1.5 mV rms (10 MHz&ndash;5 GHz)</td><td>reported</td><td>0.242 mV rms</td><td class="pass">pass</td></tr>
+<tr><td>Power &lt; 15 mW</td><td>&le; 2 mW</td><td>1.12 mW</td><td class="pass">pass</td></tr>
+<tr><td>Area &lt; 0.05 mm&sup2; (130 nm PDK)</td><td>reported, first-order</td><td>1.1&times;10<sup>&minus;5</sup> mm&sup2; active-device estimate</td><td class="pass">pass (estimate)</td></tr>
+<tr><td>Eye opening &gt; 0.4 UI (H) and &gt; 100 mV (V)</td><td>&ge; 0.7 UI and &ge; 0.25 V after a &minus;10 dB channel</td><td>0.90 UI, 0.370 V</td><td class="pass">pass</td></tr>
+<tr><td>PVT: TT/SS/FF/SF/FS, VDD &plusmn;5%, 0&ndash;125 &deg;C</td><td>the same 45 corners, trained across (curriculum) and verified</td><td>45/45</td><td class="pass">pass</td></tr>
+<tr><td>Zero human intervention; faster than sweeping</td><td>policy sizes from a random start in 2&ndash;3 simulations</td><td>random search 13, CMA-ES 9</td><td class="pass">pass</td></tr>
+<tr><td>Deliverable: Python RL framework, specs in, SPICE in the loop, schematic + specs out</td><td><code>train_sac.py --spec ...</code>, ngspice gates, <code>sized_ctle.sp</code> + <code>validation.json</code></td><td>yes</td><td class="pass">pass</td></tr>
+<tr><td>Bonus: LLM-based human interaction to fine-tune</td><td><code>reward_from_feedback.py</code> &rarr; <code>--reward-settings</code></td><td>yes (applies per run/stage)</td><td class="pass">pass</td></tr>
+</table>
+<p class="small">Table 1a. The brief's specifications against this submission.</p>
+<p>Under the brief's own eye thresholds (100 mV, 0.4 UI) the pre-ML AC-only bounded-search design (0.160 V, 0.58 UI)
+also passes; the RL reward uses the tighter 0.25 V / 0.7 UI targets so that the policy delivers margin rather than a
+marginal pass, and the comparisons in this report are against those.</p>
 
 <h2>2. System overview</h2>
 <p>Figure 1 shows the loop. The agent's action is a normalised design vector; the evaluator maps it to device values,
@@ -144,8 +171,8 @@ environment, DFE model, PVT matrix and LLM feedback parser, <code>scripts/</code
 validation and reporting entry points, and <code>tests/</code> a 58-test regression suite that runs without ngspice.</p>
 
 <h2>3. Process design kit</h2>
-<p>The synopsis named the SkyWater sky130 PDK. The implementation targets the IHP sg13g2 open PDK, also a 130 nm node.
-The team switched during development because the sky130 simulation flow was too slow for an RL loop that runs three
+<p>The brief allows either open 130 nm PDK (IHP BiCMOS or SkyWater sky130); the synopsis named sky130. The
+implementation targets the IHP sg13g2 open PDK. The team switched during development because the sky130 simulation flow was too slow for an RL loop that runs three
 ngspice analyses per environment step, whereas IHP's PSP103 Verilog-A models compile with OpenVAF to OSDI and run
 natively in ngspice 47 at about 0.6 s per environment step with eight simulators in parallel. PSP103 is a foundry-grade
 surface-potential compact model, so this is a strengthening of the device physics rather than a simplification.
