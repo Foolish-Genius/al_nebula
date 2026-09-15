@@ -104,7 +104,7 @@ designs (no exploration noise), then PVT / HD3 validation of the best design.
 | `sac-ihp-v1` (seed 1) | 30k | - | 95.5% | 20 / 20 | 2 / 4 | 0.327 V, 1.22 mW, -57.8 dB, 45/45 |
 | `sac-ihp-v1-s2` (seed 2) | 12k | - | 95.5% | 20 / 20 | 3 / 4 | 0.316 V, 1.22 mW, -57.7 dB, 45/45 |
 | `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 96.2% | 20 / 20 | 2.5 / 4 | 0.344 V, 1.01 mW, -68.2 dB, 45/45 |
-| `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | {PVT_TRAIN} | {PVT_ROLLOUTS} | {PVT_STEPS} | {PVT_DESIGN} |
+| `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.2% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
 | `sac-ihp-eq` (seed 1) | 12k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | {EQ_TRAIN} | {EQ_ROLLOUTS} | {EQ_STEPS} | {EQ_DESIGN} |
 
 Against a 3000-design random search on the same models and reward
@@ -128,7 +128,15 @@ Stage 1 trains at the nominal corner (TT, 1.2 V, 27 C). Stage 2 resumes the
 same policy with `--corners all --resume`: each episode is simulated at a
 corner drawn uniformly from the 45-corner matrix (5 process x 3 supply x 3
 temperature) and the policy is not told which, so it must size for every
-corner from the metrics it observes. {PVT_TEXT}
+corner from the metrics it observes. Resumed from the HD3-enforced nominal policy, the corner-randomised stage
+stayed at 95-96% feasible steps from its first window (per process corner
+during training: SS 97%, FS 96%, FF 95%, TT 95%, SF 94%), i.e. the nominal
+policy transferred and then held. Evaluation rolls the policy out from
+random designs at random corners: 24 of 24 rollouts reached a fully feasible
+design (19 distinct corners drawn, spanning every process, supply and
+temperature), median 2 simulation steps, worst 4; the best design passes all
+45 corners with HD3 at -61.9 dB. Artifacts: `reports/sac-ihp-pvt/`,
+`reports/eval-ihp-pvt/`.
 
 ### Whole-equalizer sizing (CTLE + DFE tap)
 
