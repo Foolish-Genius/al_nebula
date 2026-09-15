@@ -39,7 +39,10 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=12)
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args()
-    if args.no_color:
+    # Classic Windows consoles (powershell.exe / cmd.exe) print ANSI codes literally;
+    # Windows Terminal sets WT_SESSION. Colour only where it will render.
+    import os
+    if args.no_color or (os.name == "nt" and not os.environ.get("WT_SESSION")):
         global GREEN, RED, DIM, BOLD, RESET
         GREEN = RED = DIM = BOLD = RESET = ""
 
@@ -88,7 +91,8 @@ def main() -> None:
         m = info["metrics"]
         v = info["violations"]
         names = {"peaking_boost": "peak", "peaking_ceiling": "peak<12", "power": "power", "eye_horizontal_ui": "width", "eye_vertical_v": "eye", "hd3": "hd3"}
-        marks = "  ".join((GREEN + "[ok] " if val <= 0 else RED + "[--] ") + names.get(k, k) + RESET for k, val in v.items())
+        names = {"peaking_boost": "peak", "peaking_ceiling": "p<12", "power": "pwr", "eye_horizontal_ui": "width", "eye_vertical_v": "eye", "hd3": "hd3"}
+        marks = " ".join((GREEN + "ok:" if val <= 0 else RED + "--:") + names.get(k, k) + RESET for k, val in v.items())
         hd3 = m.get("hd3_db")
         line = (f"{step:>4} {p['W_in'] * 1e6:>7.2f}u {p['R_load']:>7.0f} {p['I_bias'] * 1e3:>6.2f}m {p['R_s']:>6.0f} {p['C_s'] * 1e15:>5.0f}f  "
                 f"{m.get('peaking_boost', float('nan')):>7.2f} {m.get('power', float('nan')) * 1e3:>8.2f} {m.get('eye_vertical_v', float('nan')):>6.3f} {m.get('eye_horizontal_ui', float('nan')):>6.2f}  "
