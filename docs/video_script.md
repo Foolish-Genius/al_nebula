@@ -4,14 +4,13 @@ Target length: 5:45 (5:00 without the optional lines marked **[optional]**).
 Slide numbers refer to `docs/report/AutoAnalog-RL_deck.pptx`; every slide's speaker notes carry the same text.
 Read at a calm pace — about 140 words per minute. Lines in *italics* are stage directions, not spoken.
 
-Before recording: open a PowerShell window in `Z:\al_nebula`, run
-`.\.venv\Scripts\python.exe scripts\demo_rollout.py reports\sac-ihp-pvt --seed 7` once so the models are warm, then clear the screen.
+Recording: everything is on the slides — the repository page (slide 2), a real terminal run (slide 4), the netlist and commands (slide 11) — so the screen recording is the deck from start to finish with no window switching. If you want one live moment, keep a terminal open behind the deck and alt-tab to it on slide 4; otherwise skip that.
 
 ---
 
 ## 0:00 – 0:25 · Introduction — Slide 1
 
-*Show the title slide, then briefly the GitHub repository page.*
+*Slide 1.*
 
 Hello everyone. This is our project, AutoAnalog-RL — Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning.
 
@@ -21,7 +20,7 @@ Instead of manually sweeping circuit parameters, our SAC agent interacts directl
 
 ## 0:25 – 1:00 · Repository and overall flow — Slide 2
 
-*Show the repository folders, then the flow diagram on the slide.*
+*Slide 2 — the repository page is on the left, the flow diagram on the right.*
 
 This is our project repository.
 
@@ -49,8 +48,7 @@ At every step, the evaluator checks the design progressively: first the DC opera
 
 ## 1:35 – 2:25 · The reinforcement-learning loop, live — Slides 4 and 5
 
-*Switch to the terminal. Type the command and press Enter as you start the next paragraph:*
-`.\.venv\Scripts\python.exe scripts\demo_rollout.py reports\sac-ihp-pvt`
+*Slide 4 — a real rollout is captured on the slide. (Optional live moment: alt-tab to a terminal and run `.\.venv\Scripts\python.exe scripts\demo_rollout.py reports\sac-ihp-pvt`.)*
 
 Now we move to the main part of the project — the reinforcement-learning loop.
 
@@ -60,9 +58,9 @@ The reward considers the specification violations as well as power and the margi
 
 We also use fail-fast simulation, so a design that already fails an early gate does not spend simulation time on the later analyses.
 
-*The rollout is printing by now. Point at the lines:*
+*Point at the lines on the slide:*
 
-What you see here is the trained policy running live. It starts from a random design at a random process, voltage and temperature corner. Each line is one ngspice evaluation of a new design, and the checklist on the right shows which specifications pass. Within a few simulations every specification is green, including HD3, and the sized netlist is written. That took about seven seconds on a laptop.
+What you see here is the trained policy running. It starts from a random design at a random process, voltage and temperature corner. Each line is one ngspice evaluation of a new design, and the checklist on the right shows which specifications pass. Within a few simulations every specification is green, including HD3, and the sized netlist is written. That took about seven seconds on a laptop.
 
 *Switch to slide 5.*
 
@@ -116,7 +114,7 @@ We also tested the pre-ML AC-only bounded search. Although it optimizes the AC r
 
 ## 4:20 – 4:45 · Reproducibility and the final output — Slide 11
 
-*Show the commands on the slide, then open `reports\eval-ihp-pvt\sized_ctle.sp` in an editor and scroll the header.*
+*Slide 11 — the commands, the netlist header and the artifact list are all on the slide.*
 
 The entire flow is reproducible through the scripts in our repository.
 
@@ -124,8 +122,7 @@ The training and evaluation scripts generate JSON, CSV and PNG evidence, and eve
 
 So the final output is not just an RL score — it is an actual sized circuit together with its simulation and validation results.
 
-**[optional, 15 s]** *Run in the terminal:*
-`.\.venv\Scripts\python.exe scripts\reward_from_feedback.py "power matters much more than eye margin, and we don't care about linearity"`
+**[optional, 15 s]** *Point at the last command on the slide (reward_from_feedback.py).*
 As a bonus, an engineer can steer the reward in plain language: this sentence becomes a set of reward weights — power up, eye margin and linearity down — which the training script takes as input.
 
 ## 4:45 – 5:00 · Closing — Slide 12

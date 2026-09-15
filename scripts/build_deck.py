@@ -172,20 +172,11 @@ def build(team: str) -> Presentation:
         "Show: architecture diagram.\n\n"
         "The simulator uses the IHP sg13g2 130-nanometer open PDK with PSP103 models, running through ngspice.\n\n"
         "[ADDED] The brief allows either IHP or sky130; our synopsis named sky130 — we built on IHP because its PSP103 Verilog-A models run through ngspice's OSDI interface at about 0.6 seconds per RL step."))
-    d.text(s, "al_nebula/", Inches(0.5), Inches(1.3), Inches(4.2), Inches(0.4), size=15, bold=True, mono=True, color=NAVY)
-    d.text(s, "rl/         specs, reward, environment, DFE, PVT, LLM\n"
-              "spice/      ngspice adapter and every measurement gate\n"
-              "netlists/   CTLE topology (SPICE template)\n"
-              "scripts/    train_sac, evaluate_policy, baselines, demo\n"
-              "tests/      59-test regression suite (no ngspice needed)\n"
-              "tools/      OpenVAF link shim (Windows OSDI build)\n"
-              "docs/       report, deck, video shot list",
-           Inches(0.5), Inches(1.7), Inches(5.6), Inches(2.6), size=11.5, mono=True, fill=LIGHT)
-    d.text(s, "Flow: action → device values → SPICE netlist → gates in fail-fast order → metrics → reward → agent",
-           Inches(0.5), Inches(4.45), Inches(5.6), Inches(0.9), size=13, color=GREY)
-    d.text(s, "Simulator: IHP sg13g2 130 nm, PSP103 via OpenVAF/OSDI in ngspice 47, 8 processes, ~0.6 s per step\n(brief allows IHP or sky130; PSP103 through OSDI was the fast path)",
-           Inches(0.5), Inches(5.3), Inches(5.6), Inches(1.2), size=12, color=GREY)
-    pipeline_top = Inches(1.4)
+    d.image(s, FIG / "repo_page_crop.png", Inches(0.4), Inches(1.25), height=Inches(4.5))
+    d.text(s, "rl/ specs, reward, environment, DFE, PVT, LLM feedback · spice/ ngspice adapter and every gate · netlists/ CTLE topology · scripts/ train, evaluate, baselines, demo · tests/ 59 tests · tools/ Windows OSDI link shim",
+           Inches(0.4), Inches(5.8), Inches(5.9), Inches(0.75), size=10, color=GREY)
+    d.text(s, "Simulator: IHP sg13g2 130 nm, PSP103 via OpenVAF/OSDI in ngspice 47, 8 processes, ~0.6 s per step (brief allows IHP or sky130)",
+           Inches(0.4), Inches(6.5), Inches(5.9), Inches(0.5), size=10, color=GREY)
     # pipeline on the right at reduced scale
     boxes = [
         ("SAC agent", NAVY), ("Environment", NAVY), ("SpiceEvaluator\n.op → .ac → PRBS .tran\n→ eye/DFE → HD3", BLUE), ("ngspice ×8", NAVY), ("Outputs", GREEN),
@@ -221,20 +212,18 @@ def build(team: str) -> Presentation:
     d.text(s, "Gates run in this order; a design that fails early costs no further simulation.", Inches(0.5), Inches(6.78), Inches(12), Inches(0.3), size=11, color=GREY)
 
     # 4 ------------------------------------------------------------------ 1:35-2:25 (a)
-    s = d.slide("RL training: the SAC loop, live", "1:35 – 2:25", subtitle="python scripts/demo_rollout.py reports/sac-ihp-pvt   — run live: random design, random PVT corner", notes=(
-        "1:35–2:25 — RL training demo. Show: [ADDED] run demo_rollout.py live here, then the training screenshots and learning curves on the next slide.\n\n"
+    s = d.slide("RL training: the SAC loop, live", "1:35 – 2:25", subtitle="python scripts/demo_rollout.py reports/sac-ihp-pvt   — a real rollout: random design, random PVT corner", notes=(
+        "1:35–2:25 — RL training demo. Show: the captured rollout on this slide (optionally alt-tab to a terminal and run demo_rollout.py live), then the learning curves on the next slide.\n\n"
         "Now we move to the main part of the project — the reinforcement learning loop.\n\n"
         "We use a Soft Actor-Critic, or SAC, agent. The agent starts from a random circuit design and learns which parameter changes improve the circuit performance.\n\n"
         "The reward considers the specification violations as well as power and the margin from the required specifications.\n\n"
         "We also use fail-fast simulation, so a design that already fails an early gate does not unnecessarily spend simulation time on the later analyses.\n\n"
-        "[ADDED, while the demo runs] Each line is one ngspice evaluation of a new design; the checklist on the right shows which specs pass. From a random start at a random corner, every spec is met within a few simulations and the sized netlist is written."))
-    demo = (FIG / "demo_output.txt").read_text(encoding="utf-8").strip().splitlines()
-    demo = [line.replace("  [ok] ", " OK:").replace("  [--] ", " --:").replace("[ok] ", "OK:").replace("[--] ", "--:") for line in demo[:12]]
-    d.text(s, "\n".join(demo), Inches(0.4), Inches(1.6), Inches(12.5), Inches(3.3), size=9.5, mono=True, fill=TERM_BG, color=TERM_FG, wrap=False)
-    d.stat(s, "3 sims", "to meet every spec", Inches(0.6), Inches(5.2))
-    d.stat(s, "7 s", "wall time on a laptop", Inches(3.7), Inches(5.2))
-    d.stat(s, "SS / 1.0 V / 62 °C", "random corner, random start", Inches(6.8), Inches(5.2), width=Inches(3.4))
-    d.text(s, "Reward = −Σ wᵢ·violationᵢ − power charge + success bonus + margin bonus\nDC failure: −10, fail fast", Inches(10.4), Inches(5.2), Inches(2.7), Inches(1.4), size=11, color=GREY)
+        "[ADDED] What you see here is the trained policy running from a random design at a random corner. Each line is one ngspice evaluation of a new design; the checklist on the right shows which specs pass. From a random start at a random corner, every spec is met within a few simulations and the sized netlist is written."))
+    d.image(s, FIG / "demo_terminal.png", Inches(0.4), Inches(1.55), width=Inches(11.2))
+    d.stat(s, "3 sims", "to meet every spec", Inches(0.6), Inches(5.35))
+    d.stat(s, "7 s", "wall time on a laptop", Inches(3.7), Inches(5.35))
+    d.stat(s, "SS / 1.0 V / 62 °C", "random corner, random start", Inches(6.8), Inches(5.35), width=Inches(3.4))
+    d.text(s, "Reward = −Σ wᵢ·violationᵢ − power charge + success bonus + margin bonus\nDC failure: −10, fail fast", Inches(10.4), Inches(5.35), Inches(2.7), Inches(1.4), size=11, color=GREY)
 
     # 5 ------------------------------------------------------------------ 1:35-2:25 (b)
     s = d.slide("Training converges in ~2k steps; 60/60 rollouts feasible over three seeds", "1:35 – 2:25", notes=(
