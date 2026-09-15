@@ -26,8 +26,14 @@ class ValidationReporter:
         transient_time_s: Sequence[float] | None = None,
         transient_output_v: Sequence[float] | None = None,
         pvt_results: Sequence[Mapping[str, Any]] | None = None,
+        netlist: str | None = None,
     ) -> dict[str, str]:
         """Write JSON/CSV summaries and any plots for available validation data."""
+        paths_extra: dict[str, str] = {}
+        if netlist is not None:
+            netlist_path = self.output_dir / "sized_ctle.sp"
+            netlist_path.write_text(netlist, encoding="utf-8")
+            paths_extra["netlist"] = str(netlist_path)
         json_path = self.output_dir / "validation.json"
         serializable = {key: self._json_value(value) for key, value in metrics.items()}
         json_path.write_text(json.dumps(serializable, indent=2, sort_keys=True), encoding="utf-8")
@@ -54,7 +60,7 @@ class ValidationReporter:
             paths["pvt_plot"] = self._plot_pvt(rows)
         else:
             paths["pvt_plot"] = self._plot_placeholder("PVT results unavailable", "pvt_peaking.png")
-        return paths
+        return {**paths, **paths_extra}
 
     def write_search(self, rows: Sequence[Mapping[str, Any]]) -> dict[str, str]:
         """Write bounded-search candidates and a score-versus-evaluation plot."""

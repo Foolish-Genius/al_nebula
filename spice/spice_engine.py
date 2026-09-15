@@ -642,6 +642,24 @@ class SpiceEvaluator:
             "eye_center_ui": (best_bin + 0.5) / phase_bins if eye_height > 0.0 else float("nan"),
         }
 
+    def sized_netlist(self, actions: np.ndarray, dfe_tap: float | None = None) -> str:
+        """The CTLE netlist with this design's device values filled in: the deliverable schematic.
+
+        Header comments record the SI values, the model source, and the DFE tap
+        (which is a behavioural stage, not part of the SPICE deck).
+        """
+        parameters = self.map_actions(actions)
+        header = [
+            "* AutoAnalog-RL sized CTLE",
+            f"* model source: {self.model_source}",
+            *[f"* {name} = {value:.6g}" for name, value in parameters.items()],
+        ]
+        if dfe_tap is not None:
+            header.append(f"* one-tap DFE weight (behavioural, applied at the sampler): {dfe_tap:.4g}")
+        body = self._inject_parameters(parameters)
+        # Leave the AC stimulus in place so the deck runs as-is; strip nothing else.
+        return "\n".join(header) + "\n" + body + ("\n" if not body.endswith("\n") else "")
+
     def _inject_parameters(
         self,
         parameters: dict[str, float],

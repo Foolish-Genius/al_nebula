@@ -233,3 +233,17 @@ onoise_total = 6.2e-04
     assert onoise.tolist() == [8.7e-9, 8.5e-9, 8.3e-9]
     with pytest.raises(ValueError):
         SpiceEvaluator._parse_noise_spectrum(output, "missing_column")
+
+
+def test_sized_netlist_fills_in_device_values():
+    import numpy as np
+    from spice.spice_engine import SpiceEvaluator
+
+    evaluator = SpiceEvaluator()
+    netlist = evaluator.sized_netlist(np.zeros(5), dfe_tap=-0.1)
+    parameters = evaluator.map_actions(np.zeros(5))
+    assert netlist.startswith("* AutoAnalog-RL sized CTLE")
+    assert "* model source: ngspice_generic_level1" in netlist
+    assert f"* R_load = {parameters['R_load']:.6g}" in netlist
+    assert "DFE weight" in netlist and "-0.1" in netlist
+    assert "{" not in netlist.split("\n", 8)[-1]  # every template placeholder was substituted

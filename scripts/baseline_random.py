@@ -153,6 +153,7 @@ def main() -> None:
         transient_time_s=transient_result["time_s"],
         transient_output_v=transient_result["output_v"],
         pvt_results=pvt_results,
+        netlist=evaluator.sized_netlist(best_design, dfe_tap=None),
     )
     print(json.dumps({key: value for key, value in metrics.items() if key != "selected_action"}, indent=2, default=str))
     print(paths)

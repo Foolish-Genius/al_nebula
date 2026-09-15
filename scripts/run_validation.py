@@ -79,6 +79,7 @@ def main(
         ac_frequency_hz=ac_result["ac_frequency_hz"],
         ac_gain_db=ac_result["ac_gain_db"],
         pvt_results=pvt_results,
+        netlist=evaluator.sized_netlist(action, dfe_tap=selected_tap),
     )
     paths.update(reporter.write_search(search_rows))
     paths.update(reporter.write_dfe(transient_result.get("dfe_time_s", transient_result["time_s"]), transient_result.get("dfe_output_v", transient_result["output_v"])))
