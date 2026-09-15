@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -43,6 +43,7 @@ class CtleEnvironment:
         random_reset: bool = False,
         terminate_on_success: bool = True,
         run_linearity: bool = False,
+        corners: Sequence[Any] | None = None,
     ) -> None:
         if action_mode not in self.ACTION_MODES:
             raise ValueError(f"unsupported action mode: {action_mode}")
@@ -59,6 +60,12 @@ class CtleEnvironment:
         self.delta_scale = delta_scale
         self.run_transient = run_transient and hasattr(evaluator, "run_transient")
         self.run_linearity = run_linearity and hasattr(evaluator, "run_linearity")
+        # PVT curriculum: each episode simulates at a corner drawn from this
+        # list (rl.pvt.PvtCorner), so the policy must size for every corner
+        # without being told which one it is in - domain randomisation.
+        self.corners = tuple(corners) if corners else ()
+        self.current_corner = None
+        self._corner_target = getattr(evaluator, "spice", evaluator)
         self.random_reset = random_reset
         self.terminate_on_success = terminate_on_success
         self.step_count = 0
@@ -76,6 +83,9 @@ class CtleEnvironment:
             self._rng = np.random.default_rng(seed)
         self.step_count = 0
         self.last_metrics = {}
+        if self.corners and hasattr(self._corner_target, "set_corner"):
+            self.current_corner = self.corners[int(self._rng.integers(len(self.corners)))]
+            self._corner_target.set_corner(self.current_corner.process, self.current_corner.vdd, self.current_corner.temperature_c)
         initial = (options or {}).get("initial_design")
         if initial is not None:
             self.design = self._validated(initial)
@@ -103,6 +113,8 @@ class CtleEnvironment:
         truncated = self.step_count >= self.max_steps and not terminated
         observation = self._observation(metrics, diagnostics)
         info = {"metrics": metrics, "design": self.design.copy(), **diagnostics}
+        if self.current_corner is not None:
+            info["corner"] = self.current_corner.name
         if hasattr(self.evaluator, "map_actions"):
             info["parameters"] = self.evaluator.map_actions(self.design)
         return observation, float(reward), terminated, truncated, info

@@ -378,3 +378,45 @@ def test_gym_wrapper_exposes_box_spaces():
     observation, reward, terminated, truncated, info = wrapped.step(np.full(5, 1.0000001, dtype=np.float32))
     assert wrapped.observation_space.contains(observation)
     assert terminated is True
+
+
+def test_environment_samples_a_pvt_corner_per_episode():
+    class CornerEvaluator(FakeEvaluator):
+        def __init__(self):
+            self.corners = []
+
+        def set_corner(self, process, vdd, temperature_c):
+            self.corners.append((process, vdd, temperature_c))
+
+    corners = [PvtCorner("SS", 0.95, 125.0), PvtCorner("FF", 1.05, 0.0)]
+    evaluator = CornerEvaluator()
+    environment = CtleEnvironment(evaluator, run_transient=False, corners=corners)
+    seen = set()
+    for seed in range(12):
+        environment.reset(seed=seed)
+        _, _, _, _, info = environment.step(np.zeros(5))
+        assert info["corner"] == environment.current_corner.name
+        seen.add(info["corner"])
+    assert seen == {"SS_0.95V_125C", "FF_1.05V_0C"}
+    assert evaluator.corners[-1] == (environment.current_corner.process, environment.current_corner.vdd, environment.current_corner.temperature_c)
+
+    # No corners: nominal, nothing set, no corner in info.
+    plain = CornerEvaluator()
+    environment = CtleEnvironment(plain, run_transient=False)
+    environment.reset()
+    _, _, _, _, info = environment.step(np.zeros(5))
+    assert "corner" not in info and plain.corners == []
+
+
+def test_spice_evaluator_corner_flows_into_netlist():
+    from spice.spice_engine import SpiceEvaluator
+
+    evaluator = SpiceEvaluator()
+    nominal = evaluator._inject_parameters(evaluator.map_actions(np.zeros(5)), **evaluator._corner_kwargs())
+    evaluator.set_corner("SS", 1.14, 125.0)
+    assert evaluator.corner_name == "SS_1.14V_125C"
+    cold = evaluator._inject_parameters(evaluator.map_actions(np.zeros(5)), **evaluator._corner_kwargs())
+    assert nominal != cold
+    assert "1.14" in cold and "125" in cold
+    with pytest.raises(ValueError):
+        evaluator.set_corner("XX")

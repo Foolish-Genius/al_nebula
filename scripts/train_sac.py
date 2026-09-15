@@ -28,7 +28,7 @@ from rl.feedback import RewardSettings
 from rl.gym_wrapper import make_gym_env
 from rl.reward import CtleReward
 from rl.specs import CtleSpecifications
-from rl.pvt import all_pvt_corners
+from rl.pvt import PvtCorner, all_pvt_corners
 from spice.spice_engine import SpiceEvaluator
 
 
@@ -60,6 +60,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
     parser.add_argument("--hd3", action="store_true", help="enforce the HD3 spec: run the linearity gate once the other specs pass")
     parser.add_argument("--equalizer", action="store_true", help="size the whole equalizer: five CTLE values plus the one-tap DFE weight")
+    parser.add_argument(
+        "--corners",
+        choices=("nominal", "all", "process"),
+        default="nominal",
+        help="PVT curriculum: simulate each episode at a random corner (all = 45 PVT corners, process = the 5 process corners at nominal V/T)",
+    )
+    parser.add_argument("--resume", default=None, help="SAC checkpoint .zip to continue training from (curriculum stage 2)")
     parser.add_argument(
         "--reward-settings",
         default=None,
@@ -107,6 +114,14 @@ def build_reward(config: dict) -> CtleReward:
     )
 
 
+def curriculum_corners(name: str) -> tuple[PvtCorner, ...]:
+    if name == "all":
+        return all_pvt_corners()
+    if name == "process":
+        return tuple(PvtCorner(process, 1.0, 62.5) for process in ("TT", "SS", "FF", "SF", "FS"))
+    return ()
+
+
 def build_env(config: dict):
     """Build one gym env from plain config so the vec env factory only needs plain data."""
     evaluator = build_evaluator(config)
@@ -122,6 +137,7 @@ def build_env(config: dict):
         random_reset=config["random_reset"],
         terminate_on_success=config["terminate_on_success"],
         run_linearity=bool(config.get("hd3")),
+        corners=curriculum_corners(config.get("corners", "nominal")),
     )
     return make_gym_env(environment)
 
@@ -149,6 +165,8 @@ def main() -> None:
         "eye_width_min": args.eye_width_min,
         "hd3": args.hd3,
         "equalizer": args.equalizer,
+        "corners": args.corners,
+        "resume": args.resume,
         "reward_settings": json.loads(Path(args.reward_settings).read_text(encoding="utf-8")) if args.reward_settings else None,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
@@ -180,7 +198,7 @@ def main() -> None:
             self.best_metrics: dict = {}
             self.handle = (output_dir / "steps.csv").open("w", newline="", encoding="utf-8")
             self.writer = csv.writer(self.handle, lineterminator="\n")
-            self.writer.writerow(["timestep", "reward", "dc_valid", "peaking_boost", "power", "eye_vertical_v", "eye_horizontal_ui", "all_specs_met"])
+            self.writer.writerow(["timestep", "reward", "dc_valid", "peaking_boost", "power", "eye_vertical_v", "eye_horizontal_ui", "all_specs_met", "corner"])
 
         def _on_step(self) -> bool:
             for reward, info in zip(self.locals["rewards"], self.locals["infos"]):
@@ -194,6 +212,7 @@ def main() -> None:
                     metrics.get("eye_vertical_v"),
                     metrics.get("eye_horizontal_ui"),
                     info.get("all_specs_met"),
+                    info.get("corner", ""),
                 ])
                 if reward > self.best_reward:
                     self.best_reward = float(reward)
@@ -209,21 +228,28 @@ def main() -> None:
     checkpoints = CheckpointCallback(save_freq=args.checkpoint_every, save_path=str(output_dir / "checkpoints"), name_prefix="sac")
 
     target_entropy = "auto" if args.target_entropy == "auto" else float(args.target_entropy)
-    model = SAC(
-        "MlpPolicy",
-        env,
-        seed=args.seed,
-        learning_starts=args.learning_starts,
-        batch_size=args.batch_size,
-        train_freq=1,
-        gradient_steps=args.gradient_steps,
-        gamma=args.gamma,
-        ent_coef=args.ent_coef,
-        target_entropy=target_entropy,
-        device=args.device,
-        verbose=1,
-    )
-    model.learn(total_timesteps=args.timesteps, callback=[best, checkpoints])
+    if args.resume:
+        # Continue from a checkpoint (e.g. the nominal-corner policy) on the new
+        # environment; the timestep counter carries on so there is no second
+        # random warm-up, and the replay buffer starts empty on the new corners.
+        model = SAC.load(args.resume, env=env, device=args.device, verbose=1)
+        print(f"resumed {args.resume} at {model.num_timesteps} timesteps")
+    else:
+        model = SAC(
+            "MlpPolicy",
+            env,
+            seed=args.seed,
+            learning_starts=args.learning_starts,
+            batch_size=args.batch_size,
+            train_freq=1,
+            gradient_steps=args.gradient_steps,
+            gamma=args.gamma,
+            ent_coef=args.ent_coef,
+            target_entropy=target_entropy,
+            device=args.device,
+            verbose=1,
+        )
+    model.learn(total_timesteps=args.timesteps, callback=[best, checkpoints], reset_num_timesteps=not args.resume)
     model.save(str(output_dir / "sac_final"))
 
     if best.best_design is None:
@@ -255,6 +281,8 @@ def main() -> None:
         "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < specifications.hd3_max_db),
         "hd3_enforced": args.hd3,
         "equalizer": args.equalizer,
+        "corners": args.corners,
+        "resumed_from": args.resume,
         "dfe_tap": equalizer_result.get("dfe_tap"),
         "dfe_eye_height_v": equalizer_result.get("dfe_eye_height_v"),
         "transient_error": transient_result.get("error"),
