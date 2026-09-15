@@ -194,3 +194,19 @@ def test_transient_parser_collapses_repeated_timepoints():
     time, output = SpiceEvaluator._parse_transient("0 0 0.5 0.4\n1 1e-12 0.6 0.4\n2 1e-12 0.7 0.4\n3 2e-12 0.8 0.4\n")
     assert time.tolist() == [0.0, 1e-12, 2e-12]
     assert output.tolist() == pytest.approx([0.1, 0.3, 0.4])
+
+
+def test_hd3_from_waveform_recovers_known_distortion():
+    import numpy as np
+    from spice.spice_engine import SpiceEvaluator
+
+    f0 = SpiceEvaluator.HD3_TONE_HZ
+    time_s = np.linspace(0.0, 50e-9, 5001)
+    # -40 dB third harmonic on top of the fundamental, plus a DC offset.
+    wave = 0.6 + 0.2 * np.sin(2 * np.pi * f0 * time_s) + 0.002 * np.sin(2 * np.pi * 3 * f0 * time_s)
+    assert SpiceEvaluator.hd3_from_waveform(time_s, wave) == pytest.approx(-40.0, abs=0.2)
+    # A pure tone must not report distortion: leakage floor well below the spec.
+    pure = 0.6 + 0.2 * np.sin(2 * np.pi * f0 * time_s)
+    assert SpiceEvaluator.hd3_from_waveform(time_s, pure) < -80.0
+    with pytest.raises(ValueError):
+        SpiceEvaluator.hd3_from_waveform(np.linspace(0.0, 10e-9, 100), np.zeros(100))
