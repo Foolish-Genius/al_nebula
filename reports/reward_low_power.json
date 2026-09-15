@@ -1,0 +1,15 @@
+{
+  "feedback": "We are power constrained: current budget matters much more than eye margin, and we don't care about linearity",
+  "weights": {
+    "peaking_boost": 1.0,
+    "peaking_ceiling": 1.0,
+    "power": 3.0,
+    "eye_horizontal_ui": 1.0,
+    "eye_vertical_v": 0.3333333333333333,
+    "hd3": 0.3333333333333333
+  },
+  "efficiency_weight": 3.0,
+  "margin_weight": 5.0,
+  "rationale": "keyword fallback: raised power x3; lowered eye_vertical_v x0.33; lowered hd3 x0.33",
+  "source": "keyword"
+}

@@ -73,3 +73,36 @@ def test_rollout_batch_reports_steps_to_feasible_and_best_design():
         assert record["best_reward"] > 20.0
         assert record["best_metrics"]["eye_vertical_v"] == 0.6
         assert record["best_design"].shape == (5,)
+
+
+def test_keyword_feedback_scales_the_right_weights():
+    from rl.feedback import RewardSettings, keyword_settings, settings_from_feedback
+
+    low_power = keyword_settings("power matters much more than anything else")
+    assert low_power.weights["power"] == pytest.approx(3.0)
+    assert low_power.efficiency_weight == pytest.approx(3.0)
+    assert low_power.weights["eye_vertical_v"] == 1.0
+    assert low_power.source == "keyword"
+
+    relaxed = keyword_settings("don't care about linearity", current=low_power)
+    assert relaxed.weights["hd3"] == pytest.approx(0.5)
+    assert relaxed.weights["power"] == pytest.approx(3.0)  # untouched settings carry over
+
+    # Bounds are enforced and the offline path never needs credentials.
+    extreme = keyword_settings("power is critical", current=RewardSettings(weights={"power": 9.0}))
+    assert extreme.weights["power"] == 10.0
+    assert settings_from_feedback("open the eye more", use_llm=False).weights["eye_vertical_v"] == pytest.approx(2.0)
+
+    round_trip = RewardSettings.from_dict(relaxed.to_dict())
+    assert round_trip.weights == relaxed.weights
+
+
+def test_build_reward_applies_reward_settings():
+    from scripts.train_sac import build_reward
+
+    config = {"invalid_penalty": -10.0, "success_bonus": 20.0, "margin_weight": 5.0}
+    assert build_reward(config).margin_weight == 5.0 and build_reward(config).weights == {}
+    config["reward_settings"] = {"weights": {"power": 4.0}, "efficiency_weight": 2.5, "margin_weight": 1.0}
+    reward = build_reward(config)
+    assert reward.weights["power"] == 4.0 and reward.weights["eye_vertical_v"] == 1.0
+    assert reward.efficiency_weight == 2.5 and reward.margin_weight == 1.0
