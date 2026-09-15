@@ -1,0 +1,19 @@
+AutoAnalog-RL policy rollout  model=sac_final.zip  specs: eye >= 0.25 V, width >= 0.7 UI, peaking 3-12 dB, power <= 2 mW, HD3 <= -30 dB
+start: random design (seed 21), corner SS_1.00V_62.5C
+
+step     W_in  R_load  I_bias    R_s    C_s  peak dB power mW  eye V eye UI   HD3 dB   reward  specs
+----------------------------------------------------------------------------------------------------
+   1   27.62u     829   0.46m    307   885f     5.25     0.55  0.173   0.66        -    -1.64  [ok] peak  [ok] peak<12  [ok] power  [--] width  [--] eye  [--] hd3
+   2   24.05u     912   0.65m    263   786f     5.17     0.78  0.246   0.76        -    -1.41  [ok] peak  [ok] peak<12  [ok] power  [ok] width  [--] eye  [--] hd3
+   3   23.24u     977   0.84m    232   688f     4.97     1.01  0.321   0.80    -57.8    20.21  [ok] peak  [ok] peak<12  [ok] power  [ok] width  [ok] eye  [ok] hd3
+
+all specs met after 3 simulation step(s) in 7.0 s of wall time
+sized netlist header:
+* AutoAnalog-RL sized CTLE
+* model source: ihp_ngspice
+* W_in = 2.32447e-05
+* R_load = 976.696
+* I_bias = 0.000839003
+* R_s = 232.427
+* C_s = 6.87646e-13
+* Parameterized differential gm-C CTLE.
