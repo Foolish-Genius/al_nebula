@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. A soft actor-critic (SAC) agent sizes a source-degenerated CTLE by driving ngspice directly: each step runs the DC/AC gate, the PRBS transient through a lossy channel with eye measurement, and (when enabled) the HD3 linearity gate, and the design is then verified across 45 process/voltage/temperature corners with a one-tap behavioral DFE. The backend uses the IHP sg13g2 PSP103 Verilog-A models compiled with OpenVAF to OSDI and loaded by ngspice 47; the generic ngspice Level-1 model remains as a fast debugging path. On the real models the trained policy reaches a fully spec-compliant CTLE from a random starting point in a median of two simulation steps, where random search needs about thirteen.
+AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. A soft actor-critic (SAC) agent sizes a source-degenerated CTLE by driving ngspice directly: each step runs the DC/AC gate, the PRBS transient through a lossy channel with eye measurement, and (when enabled) the HD3 linearity gate, and the design is then verified across 45 process/voltage/temperature corners with a one-tap behavioral DFE. The backend uses the IHP sg13g2 PSP103 Verilog-A models compiled with OpenVAF to OSDI and loaded by ngspice 47; the generic ngspice Level-1 model remains as a fast debugging path. On the real models the trained policy reaches a fully spec-compliant CTLE from a random starting point in a median of two to three simulation steps, where random search needs about thirteen and CMA-ES about nine.
 
 ## Process Design Kit
 
@@ -36,6 +36,15 @@ python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --mar
 # Deterministic rollouts of the policy, comparison, and PVT/HD3 validation of its best design
 python scripts/evaluate_policy.py reports/sac-ihp-v1 --rollouts 20 \
   --baseline reports/baseline-ihp-3000 --output-dir reports/eval-ihp-v1
+# Curriculum stage 2 (random PVT corner per episode) and whole-equalizer sizing
+python scripts/train_sac.py ... --hd3 --corners all --resume reports/sac-ihp-hd3/sac_final.zip \
+  --timesteps 8000 --output-dir reports/sac-ihp-pvt
+python scripts/train_sac.py ... --equalizer --timesteps 8000 --output-dir reports/sac-ihp-eq
+# CMA-ES baseline (pip install cma)
+python scripts/baseline_cmaes.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 \
+  --invalid-penalty -10 --evaluations 96 --x0 random --seed 10 --output-dir reports/cmaes-ihp-random-s10
+# Reward weights from plain-language feedback
+python scripts/reward_from_feedback.py "power matters more than eye margin" --output reports/reward.json
 # Pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
 python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission
 ```
@@ -103,9 +112,9 @@ designs (no exploration noise), then PVT / HD3 validation of the best design.
 |---|---:|---|---:|---:|---|---|
 | `sac-ihp-v1` (seed 1) | 30k | - | 95.5% | 20 / 20 | 2 / 4 | 0.327 V, 1.22 mW, -57.8 dB, 45/45 |
 | `sac-ihp-v1-s2` (seed 2) | 12k | - | 95.5% | 20 / 20 | 3 / 4 | 0.316 V, 1.22 mW, -57.7 dB, 45/45 |
-| `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 96.2% | 20 / 20 | 2.5 / 4 | 0.344 V, 1.01 mW, -68.2 dB, 45/45 |
-| `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.2% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
-| `sac-ihp-eq` (seed 1) | 12k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | {EQ_TRAIN} | {EQ_ROLLOUTS} | {EQ_STEPS} | {EQ_DESIGN} |
+| `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 95.6% | 20 / 20 | 2.5 / 4 | 0.335 V, 1.24 mW, -58.1 dB, 45/45 |
+| `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.4% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
+| `sac-ihp-eq` (seed 1) | 8k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | 92.3% | 20 / 20 | 3 / 5 | 0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, -71.6 dB, 45/45 |
 
 ### Baselines: random search and CMA-ES
 
@@ -119,7 +128,7 @@ out.
 
 | Method (from random starting designs unless noted) | First feasible design, median / worst | Best reward at 50 sims | Cost per new instance |
 |---|---:|---:|---|
-| SAC policy, deterministic rollouts (84 rollouts over 4 evaluations) | 2-3 / 5 | 20.7-20.8 | 2-3 simulations, no search |
+| SAC policy, deterministic rollouts (104 rollouts over 5 evaluations) | 2-3 / 5 | 20.5-20.8 | 2-3 simulations, no search |
 | CMA-ES, random start (6 trials) | 9 / 24 | 20.50 (mean) | ~10 simulations to feasible; 400 to refine |
 | CMA-ES from the box centre (3 trials) | 2-5 | 20.8-21.1; 21.3-21.4 at 400 | 400 simulations per design |
 | Random search | 27 | 19.65 | ~13 simulations per feasible design |
@@ -175,7 +184,7 @@ transmitted PRBS bits (`rl.dfe.dfe_eye_against_bits`: correlation-aligned
 UI-centre samples, slicer at the midpoint of the two symbol populations,
 DFE fed its own decisions, bit errors counted, zero eye on any error). With
 the honest metric a one-tap DFE still helps: the CTLE-only policy design
-goes from 0.327 V to 0.455 V at tap +0.075 with no errors. {EQ_TEXT}
+goes from 0.327 V to 0.455 V at tap +0.075 with no errors. Trained on the corrected metric for 8k steps, the six-value policy holds 91-93% of steps feasible with a median post-DFE eye of 0.51 V (CTLE-only runs hold about 0.35 V), i.e. it learns to spend the tap on margin. In deterministic rollouts 20 of 20 reach feasibility, median 3 steps, worst 5; the best rollout design has a raw eye of 0.325 V that the agent's tap of +0.062 opens to 0.355 V with no bit errors, at 1.36 mW, HD3 -71.6 dB and 45/45 corners. The earlier run on the flawed metric is kept as `reports/sac-ihp-eq-flawed-metric/` for the record. Artifacts: `reports/sac-ihp-eq/`, `reports/eval-ihp-eq/`.
 
 ### LLM frontend for the reward
 
@@ -183,7 +192,8 @@ goes from 0.327 V to 0.455 V at tap +0.075 with no errors. {EQ_TEXT}
 reward's per-spec weights (`rl/feedback.py`): Claude (Anthropic SDK,
 structured JSON output) when credentials are present, a context-aware keyword
 parser otherwise, so the loop never blocks on an API. The JSON is passed to
-`train_sac.py --reward-settings`. Example, offline path:
+`train_sac.py --reward-settings` and applies from the start of that run (or
+of a resumed curriculum stage). Example, offline path:
 
 ```text
 > "We are power constrained: current budget matters much more than eye margin,
@@ -206,7 +216,7 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 - ngspice 47 with OSDI, one OpenMP thread per process so eight simulators run
   in parallel.
 - Parameterized source-degenerated differential CTLE.
-- Bounded 100-candidate search and a random-search baseline.
+- Bounded 100-candidate search, random-search and CMA-ES baselines at equal budget.
 - SAC training (`scripts/train_sac.py`): thread-parallel environments, margin
   bonus, hold-on-success episodes, configurable eye and HD3 specs.
 - Deterministic policy evaluation against the baseline at equal budget
@@ -224,7 +234,7 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 - 45-corner PVT sweep.
 - HD3, noise, and area measurement hooks.
 - Reproducible CSV, JSON, and PNG artifacts.
-- 56 automated tests.
+- 58 automated tests.
 
 ## Known Limitations
 
@@ -239,10 +249,11 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
    (`inoise_total`, now recorded alongside) gives 0.2417 mV rms, the
    difference being trapezoid error on the log-spaced grid.
 4. Area is a first-order active-device geometry estimate, not a post-layout area result.
-5. The DFE in the RL loop is the behavioural one-tap stage; the analog
-   slicer in `DFE/` is not simulated end to end (see 1).
-6. Corner-randomised training (the PVT curriculum) does not tell the policy
+5. Corner-randomised training (the PVT curriculum) does not tell the policy
    which corner it is in; a corner-aware observation is a natural extension.
+6. The LLM frontend adjusts reward weights at the start of a run or of a
+   resumed curriculum stage, not while a run is in progress; closing that
+   loop (train, read the validation report, re-weight, resume) is a next step.
 
 ## Submission Position
 
@@ -254,8 +265,8 @@ corners, with reward weights adjustable from natural-language feedback and
 the sized netlist emitted with every design. On the real PSP103 models the
 policies reach a design that passes every measured specification - peaking,
 power, post-channel eye height and width, HD3, noise, and all 45 PVT
-corners - in a median of two simulation steps from a random start, where a
-random search needs about thirteen and the AC-only bounded search does not
+corners - in a median of two to three simulation steps from a random start, where a
+random search needs about thirteen and CMA-ES about nine and the AC-only bounded search does not
 reach the eye at all. Two measurement flaws that had survived the manual
 flow (HD3 leakage, decision-labelled DFE eye) were exposed by the agent
 optimising against them and are fixed with bit- and cycle-referenced
