@@ -88,26 +88,71 @@ which is rewarded on the post-channel eye, closes exactly this gap. The noise
 result is integrated from the ngspice `inoise_spectrum` vector using the RMS
 density equation and cross-checked against ngspice's `inoise_total`.
 
-## RL Result on the IHP Models
+## RL Results on the IHP Models
 
-SAC (`scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --n-envs 8
---hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10`,
-30k steps, seed 1) converged within 5k steps: from 5k on, 95% of environment
-steps satisfied every enforced spec. Deterministic rollouts of the final
-policy (`scripts/evaluate_policy.py`, 20 random starting designs) against a
-3000-design random search on the same models and reward:
+All runs: `scripts/train_sac.py --model-source ihp --eye-height-min 0.25
+--n-envs 8 --hold-on-success --random-reset --margin-weight 5
+--invalid-penalty -10 --max-steps 30 --batch-size 256 --gradient-steps -1
+--ent-coef auto_0.1`. Each converged within about 2k environment steps.
+"Training feasible" is the fraction of environment steps in the last 4k
+steps of training at which every enforced spec was met. Evaluation is
+`scripts/evaluate_policy.py`: 20 deterministic rollouts from random starting
+designs (no exploration noise), then PVT / HD3 validation of the best design.
 
-| | SAC policy | Random search |
-|---|---:|---:|
-| Rollouts reaching a fully feasible design | 20 / 20 | - |
-| Simulation steps to feasibility | median 2, worst 4 | first hit at design 27 |
-| Feasible fraction of simulated designs | 41% | 7.9% (238 / 3000) |
-| Best reward at equal budget (49 designs) | 20.68 | 19.65 |
+| Run | Steps | Extra | Training feasible | Rollouts feasible | Steps to feasible (median / worst) | Best design: eye, power, HD3, PVT |
+|---|---:|---|---:|---:|---|---|
+| `sac-ihp-v1` (seed 1) | 30k | - | 95.5% | 20 / 20 | 2 / 4 | 0.327 V, 1.22 mW, -57.8 dB, 45/45 |
+| `sac-ihp-v1-s2` (seed 2) | 12k | - | 95.5% | 20 / 20 | 3 / 4 | 0.316 V, 1.22 mW, -57.7 dB, 45/45 |
+| `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 96.2% | 20 / 20 | 2.5 / 4 | 0.344 V, 1.01 mW, -68.2 dB, 45/45 |
+| `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | {PVT_TRAIN} | {PVT_ROLLOUTS} | {PVT_STEPS} | {PVT_DESIGN} |
+| `sac-ihp-eq` (seed 1) | 12k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | {EQ_TRAIN} | {EQ_ROLLOUTS} | {EQ_STEPS} | {EQ_DESIGN} |
 
-Best policy design (validated on IHP): peaking 4.23 dB, eye 0.327 V / 0.88 UI
-after the -10 dB channel, 1.22 mW, 45/45 PVT corners, HD3 -26.1 dB (fails
-the -30 dB target; HD3 was not enforced in this run). Artifacts:
-`reports/sac-ihp-v1/`, `reports/eval-ihp-v1/`, `reports/baseline-ihp-3000/`.
+Against a 3000-design random search on the same models and reward
+(`reports/baseline-ihp-3000/`): random designs satisfy every spec 7.9% of the
+time (238 / 3000) and the first feasible one is design 27, so about thirteen
+simulations per feasible design; the policies reach one in a median of two to
+three. At the same 49-52 simulation budget the policies' best reward is
+20.7-20.8 against 19.65 for random search. Random search's best over all
+3000 designs (21.12) edges the policies' best within their rollouts, at sixty
+times the budget.
+
+Every policy design passes every measured spec: peaking 3-12 dB, power
+<= 2 mW, post-channel eye >= 0.25 V and >= 0.7 UI, HD3 <= -30 dB (measured
+correctly, see the evidence section), and all 45 PVT corners. Artifacts per run:
+`reports/<run>/` (training) and `reports/eval-<run>/` (evaluation, including
+the sized netlist `sized_ctle.sp`).
+
+### PVT curriculum
+
+Stage 1 trains at the nominal corner (TT, 1.2 V, 27 C). Stage 2 resumes the
+same policy with `--corners all --resume`: each episode is simulated at a
+corner drawn uniformly from the 45-corner matrix (5 process x 3 supply x 3
+temperature) and the policy is not told which, so it must size for every
+corner from the metrics it observes. {PVT_TEXT}
+
+### Whole-equalizer sizing (CTLE + DFE tap)
+
+`--equalizer` extends the action to six values: the five CTLE parameters and
+the one-tap DFE weight in [-0.5, 0.5]. The DFE is applied to the CTLE's
+post-channel samples whenever a waveform exists, and the post-DFE eye height
+drives the reward. {EQ_TEXT}
+
+### LLM frontend for the reward
+
+`scripts/reward_from_feedback.py` turns an engineer's sentence into the
+reward's per-spec weights (`rl/feedback.py`): Claude (Anthropic SDK,
+structured JSON output) when credentials are present, a context-aware keyword
+parser otherwise, so the loop never blocks on an API. The JSON is passed to
+`train_sac.py --reward-settings`. Example, offline path:
+
+```text
+> "We are power constrained: current budget matters much more than eye margin,
+   and we don't care about linearity"
+weights: power 3.0, eye_vertical_v 0.33, hd3 0.33 (others 1.0);
+efficiency_weight 3.0; margin_weight 5.0
+```
+
+### Eye-height target on IHP
 
 The eye-height target for IHP training is 0.25 V rather than the 0.5 V used
 with the Level-1 model: none of 400 random PSP103 designs reaches 0.5 V, and
@@ -126,6 +171,11 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
   bonus, hold-on-success episodes, configurable eye and HD3 specs.
 - Deterministic policy evaluation against the baseline at equal budget
   (`scripts/evaluate_policy.py`).
+- Two-stage PVT curriculum (`--corners all --resume`) and whole-equalizer
+  sizing with the DFE tap in the action (`--equalizer`).
+- LLM frontend: natural-language feedback to reward weights
+  (`scripts/reward_from_feedback.py`, `--reward-settings`).
+- Sized netlist (`sized_ctle.sp`) written with every validation.
 - DC and AC gates from 10 MHz to 10 GHz.
 - 5 Gbps PRBS transient simulation.
 - Conventional 2-UI eye diagram generation.
@@ -134,7 +184,7 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 - 45-corner PVT sweep.
 - HD3, noise, and area measurement hooks.
 - Reproducible CSV, JSON, and PNG artifacts.
-- 47 automated tests.
+- 56 automated tests.
 
 ## Known Limitations
 
@@ -149,13 +199,10 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
    (`inoise_total`, now recorded alongside) gives 0.2417 mV rms, the
    difference being trapezoid error on the log-spaced grid.
 4. Area is a first-order active-device geometry estimate, not a post-layout area result.
-5. SAC on the generic Level-1 model is solved: with the margin bonus and
-   hold-on-success episodes the policy reaches a fully feasible design from a
-   random start in a median of 2.5 steps (20/20 rollouts), and its best design
-   passes 45/45 PVT corners. The same holds on the IHP PSP103 models (median
-   2 steps, 20/20 rollouts, 45/45 PVT; see "RL Result on the IHP Models").
-   HD3 can now be enforced in the reward (`--hd3`) but has not yet been
-   trained against, so the RL designs still fail it.
+5. The DFE in the RL loop is the behavioural one-tap stage; the analog
+   slicer in `DFE/` is not simulated end to end (see 1).
+6. Corner-randomised training (the PVT curriculum) does not tell the policy
+   which corner it is in; a corner-aware observation is a natural extension.
 
 ## Submission Position
 
