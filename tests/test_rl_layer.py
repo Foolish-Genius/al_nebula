@@ -3,7 +3,7 @@ import pytest
 
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
-from rl.dfe import apply_one_tap_dfe, optimize_one_tap
+from rl.dfe import apply_one_tap_dfe, dfe_eye_against_bits, optimize_one_tap, optimize_one_tap_against_bits
 from rl.equalizer import EqualizerEvaluator
 from rl.gym_wrapper import make_gym_env
 from rl.pvt import PvtCorner, all_pvt_corners
@@ -420,3 +420,47 @@ def test_spice_evaluator_corner_flows_into_netlist():
     assert "1.14" in cold and "125" in cold
     with pytest.raises(ValueError):
         evaluator.set_corner("XX")
+
+
+def test_bit_referenced_dfe_eye_rejects_the_decision_labelled_exploit():
+    rng = np.random.default_rng(3)
+    bits = rng.integers(0, 2, 64)
+    ideal = np.where(bits == 1, 1.0, -1.0)
+    # Post-cursor ISI of 0.3 from the previous symbol, plus a little noise.
+    previous = np.r_[ideal[0], ideal[:-1]]
+    samples = 0.5 * ideal + 0.15 * previous + rng.normal(0.0, 0.01, bits.size)
+
+    no_dfe = dfe_eye_against_bits(samples, bits, 0.0)
+    matched = dfe_eye_against_bits(samples, bits, 0.15)
+    assert no_dfe["bit_errors"] == 0 and matched["bit_errors"] == 0
+    assert matched["eye_height_v"] > no_dfe["eye_height_v"] + 0.2  # the tap removes the ISI
+
+    # A huge tap flips decisions: the old decision-labelled eye would report a
+    # wide opening, the bit-referenced eye reports errors and zero height.
+    huge = dfe_eye_against_bits(samples, bits, 2.0)
+    assert huge["bit_errors"] > 0 and huge["eye_height_v"] == 0.0
+
+    best = optimize_one_tap_against_bits(samples, bits)
+    assert abs(best["tap"] - 0.15) < 0.03 and best["bit_errors"] == 0
+    with pytest.raises(ValueError):
+        dfe_eye_against_bits(samples, bits[:-1], 0.0)
+
+
+def test_spice_evaluator_dfe_eye_metrics_on_synthetic_prbs():
+    from spice.spice_engine import SpiceEvaluator
+
+    ui = SpiceEvaluator.UNIT_INTERVAL_S
+    bits = SpiceEvaluator._prbs_bits()
+    pattern = np.tile(bits, SpiceEvaluator.PRBS_PERIODS)
+    time = np.arange(0.0, pattern.size * ui, ui / 20.0)
+    symbol = np.minimum((time // ui).astype(int), pattern.size - 1)
+    ideal = np.where(pattern[symbol] == 1, 0.3, -0.3)
+    previous = np.where(pattern[np.maximum(symbol - 1, 0)] == 1, 0.1, -0.1)
+    waveform = 0.6 - (ideal + previous)  # inverted like the CTLE, with post-cursor ISI
+
+    plain = SpiceEvaluator().dfe_eye_metrics(time, waveform, tap=0.0)
+    assert plain["dfe_valid"] and plain["dfe_bit_errors"] == 0
+    assert plain["dfe_eye_height_v"] == pytest.approx(0.4, abs=0.02)
+    swept = SpiceEvaluator().dfe_eye_metrics(time, waveform)
+    assert swept["dfe_bit_errors"] == 0 and swept["dfe_eye_height_v"] > plain["dfe_eye_height_v"] + 0.15
+    assert abs(swept["dfe_tap"] - 0.1) < 0.03
