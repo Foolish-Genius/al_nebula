@@ -66,7 +66,13 @@ Add `--hd3` to enforce the HD3 spec in the reward (the linearity gate runs
 once the other specs pass) and `--equalizer` to size the whole equalizer:
 the five CTLE values plus the one-tap DFE weight as a six-value action, with
 the post-DFE eye driving the reward. To evaluate a checkpoint without
-exploration noise and compare it with random search at equal budget:
+exploration noise and compare it with random search at equal budget. For the
+PVT curriculum, resume the nominal policy with every episode at a random one
+of the 45 corners (`--corners all --resume <checkpoint>`); to steer the reward
+from plain-language feedback, write a settings file with
+`scripts/reward_from_feedback.py "power matters more than eye margin"` and
+pass it as `--reward-settings`. Every validation also writes the sized
+netlist `sized_ctle.sp`. To evaluate and compare:
 
 ```bash
 python scripts/baseline_random.py --evaluations 5000 --output-dir reports/baseline-5000
