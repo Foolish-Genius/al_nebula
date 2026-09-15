@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from rl.dfe import optimize_one_tap
+from rl.dfe import dfe_eye_against_bits, optimize_one_tap_against_bits
 
 
 class SpiceEvaluator:
@@ -477,13 +477,9 @@ class SpiceEvaluator:
             eye_height_pass = eye["eye_height_v"] >= self.eye_height_min_v
             eye_width_pass = eye["eye_width_ui"] >= self.eye_width_min_ui
 
-            # Behavioural one-tap DFE on the UI-centre samples of the CTLE
-            # output; reports the tap that opens the eye the most.
-            ui = self.UNIT_INTERVAL_S
-            symbol_centers = np.arange(time_s.min() + 0.5 * ui, time_s.max(), ui)
-            center_indices = np.searchsorted(time_s, symbol_centers).clip(max=time_s.size - 1)
-            center_values = output_v[center_indices]
-            dfe = optimize_one_tap(center_values - float(np.median(center_values)))
+            # Behavioural one-tap DFE on the aligned UI-centre samples, measured
+            # against the transmitted bits; reports the tap that opens the eye most.
+            dfe = self.dfe_eye_metrics(time_s, output_v, sample_phase=eye.get("eye_center_ui"))
 
             return {
                 "tran_valid": eye_height_pass and eye_width_pass,
@@ -492,10 +488,7 @@ class SpiceEvaluator:
                 **eye,
                 "eye_height_pass": eye_height_pass,
                 "eye_width_pass": eye_width_pass,
-                "dfe_tap": dfe["tap"],
-                "dfe_eye_height_v": dfe["eye_height_v"],
-                "dfe_output_v": dfe["corrected"],
-                "dfe_time_s": symbol_centers,
+                **dfe,
                 "error": None,
             }
 
@@ -662,6 +655,72 @@ class SpiceEvaluator:
             "eye_height_v": eye_height,
             "eye_width_ui": open_bins / phase_bins,
             "eye_center_ui": (best_bin + 0.5) / phase_bins if eye_height > 0.0 else float("nan"),
+        }
+
+    @classmethod
+    def _aligned_symbol_samples(
+        cls,
+        time_s: np.ndarray,
+        output_v: np.ndarray,
+        bits: np.ndarray,
+        ui: float,
+        periods: int = 2,
+        sample_phase: float = 0.5,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """UI-centre samples of the final PRBS period with their transmitted bits.
+
+        Returns (sample_times, samples, bits); samples are polarity-corrected
+        and centred using the same correlation alignment as ``_eye_metrics``.
+        Raises ValueError when the waveform cannot be aligned.
+        """
+        bits = np.asarray(bits, dtype=int)
+        pattern = np.tile(bits, periods)
+        time_s = np.asarray(time_s, dtype=float)
+        output_v = np.asarray(output_v, dtype=float)
+        if time_s.size < 2 or bits.size < 2:
+            raise ValueError("waveform too short to align")
+        centred = output_v - float(np.mean(output_v))
+        measure_from = (pattern.size - bits.size) * ui
+        best_score, best_delay, best_polarity = 0.0, 0.0, 1.0
+        for delay in np.arange(0.0, 2.0 * ui, ui / 40.0):
+            shifted = time_s - delay
+            index = np.floor(shifted / ui).astype(int)
+            valid = (shifted >= measure_from) & (index < pattern.size)
+            if np.count_nonzero(valid) < bits.size:
+                continue
+            ideal = np.where(pattern[index[valid]] == 1, 1.0, -1.0)
+            score = float(np.dot(centred[valid], ideal))
+            if abs(score) > abs(best_score):
+                best_score, best_delay, best_polarity = score, float(delay), (1.0 if score >= 0.0 else -1.0)
+        if best_score == 0.0:
+            raise ValueError("waveform could not be aligned to the PRBS pattern")
+        symbols = np.arange(pattern.size - bits.size, pattern.size)
+        sample_times = best_delay + (symbols + sample_phase) * ui
+        inside = sample_times <= time_s.max()
+        samples = best_polarity * np.interp(sample_times[inside], time_s, centred)
+        return sample_times[inside], samples, pattern[symbols[inside]]
+
+    def dfe_eye_metrics(self, time_s: np.ndarray, output_v: np.ndarray, tap: float | None = None, sample_phase: float | None = None) -> dict[str, Any]:
+        """Bit-referenced one-tap DFE eye of a transient gate waveform.
+
+        With ``tap`` given the DFE uses that weight (the agent's action); without
+        it the tap is swept and the best kept. ``sample_phase`` defaults to the
+        UI centre. Returns an empty-eye result if the waveform cannot be aligned.
+        """
+        try:
+            sample_times, samples, bits = self._aligned_symbol_samples(
+                time_s, output_v, self._prbs_bits(), self.UNIT_INTERVAL_S, self.PRBS_PERIODS, 0.5 if sample_phase is None else sample_phase
+            )
+        except ValueError:
+            return {"dfe_tap": 0.0 if tap is None else float(tap), "dfe_eye_height_v": 0.0, "dfe_bit_errors": None, "dfe_output_v": np.array([]), "dfe_time_s": np.array([]), "dfe_valid": False}
+        result = dfe_eye_against_bits(samples, bits, tap) if tap is not None else optimize_one_tap_against_bits(samples, bits)
+        return {
+            "dfe_tap": result["tap"],
+            "dfe_eye_height_v": result["eye_height_v"],
+            "dfe_bit_errors": result["bit_errors"],
+            "dfe_output_v": np.asarray(result["corrected"]),
+            "dfe_time_s": sample_times,
+            "dfe_valid": True,
         }
 
     def sized_netlist(self, actions: np.ndarray, dfe_tap: float | None = None) -> str:

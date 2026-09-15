@@ -54,6 +54,19 @@ class EqualizerEvaluator:
         if time_s.size < 2:
             result["equalizer_valid"] = False
             return result
+        if hasattr(self.spice, "dfe_eye_metrics"):
+            # Bit-referenced eye (see rl.dfe.dfe_eye_against_bits).
+            dfe = self.spice.dfe_eye_metrics(time_s, output_v, tap=tap, sample_phase=transient.get("eye_center_ui"))
+            result.update({
+                "equalizer_valid": bool(dfe["dfe_valid"]),
+                "equalizer_tap": tap,
+                "dfe_eye_height_v": dfe["dfe_eye_height_v"],
+                "dfe_bit_errors": dfe["dfe_bit_errors"],
+                "dfe_samples": dfe["dfe_output_v"],
+                "dfe_sample_time_s": dfe["dfe_time_s"],
+            })
+            return result
+        # Evaluators without PRBS alignment (test doubles): decision-labelled eye.
         ui = 200e-12
         centers = np.arange(time_s.min() + 0.5 * ui, time_s.max(), ui)
         samples = output_v[np.searchsorted(time_s, centers).clip(max=output_v.size - 1)]

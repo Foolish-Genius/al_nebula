@@ -37,8 +37,55 @@ def eye_height(samples: Sequence[float], decisions: Sequence[float]) -> float:
     return float(np.percentile(high, 5) - np.percentile(low, 95))
 
 
+def dfe_eye_against_bits(samples: Sequence[float], bits: Sequence[int], tap: float) -> dict[str, object]:
+    """One-tap DFE eye measured against the *transmitted* bits.
+
+    ``samples`` are the UI-centre samples of the equalised waveform, already
+    aligned and polarity-corrected so that ``bits[n]`` is the symbol sent in
+    ``samples[n]``; ``tap`` is subtracted times the DFE's own previous hard
+    decision (so error propagation is modelled). The eye is the gap between
+    the lowest sample that carried a one and the highest that carried a zero,
+    labelled by the true bits - a decision-labelled eye would separate the
+    populations by the tap itself and reward a large tap regardless of the
+    signal.
+    """
+    values = np.asarray(samples, dtype=float)
+    truth = np.asarray(bits, dtype=int)
+    if values.ndim != 1 or values.shape != truth.shape or values.size == 0:
+        raise ValueError("samples and bits must be equal-length non-empty one-dimensional sequences")
+    # Slicer threshold midway between the two symbol populations (a median
+    # lands inside a cluster whenever the ones and zeros are not equal in number).
+    ones_mask = truth == 1
+    if ones_mask.all() or not ones_mask.any():
+        raise ValueError("bits must contain both ones and zeros")
+    threshold = 0.5 * (float(np.mean(values[ones_mask])) + float(np.mean(values[~ones_mask])))
+    corrected, decisions = apply_one_tap_dfe(values - threshold, float(tap))
+    corrected = corrected + threshold
+    expected = np.where(truth == 1, 1.0, -1.0)
+    errors = int(np.count_nonzero(decisions != expected))
+    ones = corrected[truth == 1]
+    zeros = corrected[truth == 0]
+    height = float(np.min(ones) - np.max(zeros)) if ones.size and zeros.size else 0.0
+    # A receiver that decides any bit wrongly has no usable eye.
+    if errors:
+        height = 0.0
+    return {"tap": float(tap), "eye_height_v": max(0.0, height), "bit_errors": errors, "corrected": corrected, "decisions": decisions}
+
+
+def optimize_one_tap_against_bits(samples: Sequence[float], bits: Sequence[int], tap_bounds: tuple[float, float] = (-0.5, 0.5), steps: int = 41) -> dict[str, object]:
+    """Sweep the tap and keep the largest bit-referenced eye."""
+    if steps < 2 or tap_bounds[0] >= tap_bounds[1]:
+        raise ValueError("invalid tap search bounds")
+    best = dfe_eye_against_bits(samples, bits, 0.0)
+    for tap in np.linspace(tap_bounds[0], tap_bounds[1], steps):
+        candidate = dfe_eye_against_bits(samples, bits, float(tap))
+        if candidate["eye_height_v"] > best["eye_height_v"]:
+            best = candidate
+    return best
+
+
 def optimize_one_tap(samples: Sequence[float], tap_bounds: tuple[float, float] = (-0.5, 0.5), steps: int = 41) -> dict[str, object]:
-    """Select the tap with the greatest robust vertical eye opening."""
+    """Select the tap with the greatest decision-labelled eye (no reference bits; see dfe_eye_against_bits)."""
     if steps < 2 or tap_bounds[0] >= tap_bounds[1]:
         raise ValueError("invalid tap search bounds")
     values = np.asarray(samples, dtype=float)
