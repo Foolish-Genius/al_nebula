@@ -57,10 +57,18 @@ Linux run (`reports/runs/ihp-submission/`) reproduces to all printed digits.
 | Eye width after channel | 0.58 UI | fail, 0.7 UI target |
 | PVT corners | 45/45 simulated and passing | pass |
 | Area estimate | 1.09e-05 mm2 | pass, first-order estimate |
-| HD3 | -24.63 dB | fail, target below -30 dB |
+| HD3 | -58.53 dB | pass, target below -30 dB |
 | Integrated input-referred noise | 0.242 mV rms | pass, below 1.5 mV rms |
 
-The eye now fails because the transient gate drives the PRBS through a lossy
+HD3 was reported as -24.63 dB (fail) in every earlier version of this
+evidence. That number was a measurement artefact: the FFT analysed 2.5 cycles
+of the 100 MHz tone with a rectangular window, so the fundamental fell between
+40 MHz bins and its leakage filled the 300 MHz bin, flooring HD3 near -25 dB
+for every design (a sweep of each sizing knob over its full range could not
+move it past -26 dB). Analysing an integer number of periods with a Hann
+taper (`SpiceEvaluator.hd3_from_waveform`, unit-tested against a synthetic
+-40 dB tone) gives -58.5 dB for this design; the circuit was always linear
+enough. The eye now fails because the transient gate drives the PRBS through a lossy
 channel (about -10 dB at Nyquist) that the original evidence did not include,
 and the AC-only search cannot see the eye. The RL policy in the next section,
 which is rewarded on the post-channel eye, closes exactly this gap. The noise
@@ -118,7 +126,10 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 ## Known Limitations
 
 1. The DFE transistor deck is not yet a clocked closed-loop analog slicer. The active DFE result is a behavioral one-tap decision-feedback stage driven by CTLE transient samples.
-2. HD3 currently misses the strict target and must be optimized through topology/bias changes.
+2. HD3 passes with about 28 dB of margin once measured with an integer-cycle
+   window; the earlier -25 dB "failure" was spectral leakage in the
+   measurement (see the evidence section). The stimulus is a fixed 100 mV
+   differential tone; HD3 at larger swings has not been characterised.
 3. Noise extraction requires final input-referred normalization and a raw-vector sanity check before it can qualify the specification.
 4. Area is a first-order active-device geometry estimate, not a post-layout area result.
 5. SAC on the generic Level-1 model is solved: with the margin bonus and
