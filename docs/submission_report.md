@@ -107,14 +107,35 @@ designs (no exploration noise), then PVT / HD3 validation of the best design.
 | `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.2% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
 | `sac-ihp-eq` (seed 1) | 12k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | {EQ_TRAIN} | {EQ_ROLLOUTS} | {EQ_STEPS} | {EQ_DESIGN} |
 
-Against a 3000-design random search on the same models and reward
-(`reports/baseline-ihp-3000/`): random designs satisfy every spec 7.9% of the
-time (238 / 3000) and the first feasible one is design 27, so about thirteen
-simulations per feasible design; the policies reach one in a median of two to
-three. At the same 49-52 simulation budget the policies' best reward is
-20.7-20.8 against 19.65 for random search. Random search's best over all
-3000 designs (21.12) edges the policies' best within their rollouts, at sixty
-times the budget.
+### Baselines: random search and CMA-ES
+
+Two baselines run against the same models and reward. Random search
+(`scripts/baseline_random.py`, 3000 designs): 7.9% of designs satisfy every
+spec (238 / 3000) and the first feasible one is design 27. CMA-ES
+(`scripts/baseline_cmaes.py`, population 8, sigma 0.5 in the normalised box):
+three 400-evaluation trials from the box centre and six 96-evaluation trials
+from random starting designs, the latter matching how the policy is rolled
+out.
+
+| Method (from random starting designs unless noted) | First feasible design, median / worst | Best reward at 50 sims | Cost per new instance |
+|---|---:|---:|---|
+| SAC policy, deterministic rollouts (84 rollouts over 4 evaluations) | 2-3 / 5 | 20.7-20.8 | 2-3 simulations, no search |
+| CMA-ES, random start (6 trials) | 9 / 24 | 20.50 (mean) | ~10 simulations to feasible; 400 to refine |
+| CMA-ES from the box centre (3 trials) | 2-5 | 20.8-21.1; 21.3-21.4 at 400 | 400 simulations per design |
+| Random search | 27 | 19.65 | ~13 simulations per feasible design |
+
+CMA-ES is a strong per-instance optimiser on this five-dimensional problem:
+given 400 simulations it reaches the same reward the policies reach during
+training (21.2-21.6), and from the (fortuitously near-feasible) box centre it
+finds a feasible design in a handful of evaluations. The policy's advantage
+is amortisation and robustness: after one training run it sizes a new
+instance - a random starting design, a random PVT corner, a re-weighted
+reward - in two to three simulations with no per-instance search, three to
+four times fewer than CMA-ES from the same starts and about ten times fewer
+than random sampling. Refinement inside the feasible set is what the
+hold-on-success training phase does; the rollouts reported here stop at the
+first feasible step. Artifacts: `reports/baseline-ihp-3000/`,
+`reports/cmaes-ihp-400-s*/`, `reports/cmaes-ihp-random-s*/`.
 
 Every policy design passes every measured spec: peaking 3-12 dB, power
 <= 2 mW, post-channel eye >= 0.25 V and >= 0.7 UI, HD3 <= -30 dB (measured
