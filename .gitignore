@@ -12,3 +12,7 @@ tools/openvaf-link-shim/*.o
 tools/openvaf-link-shim/*.exe
 reports/eval-*/
 reports/screenshots/
+docs/report/draft.*
+docs/report/*.rendered.html
+docs/report/_preview*.png
+docs/report/report_draft.html
