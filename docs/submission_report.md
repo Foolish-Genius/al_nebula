@@ -40,24 +40,32 @@ SAC agent (or bounded search) -> CTLE SPICE .op/.ac -> PRBS transient -> 2-UI ey
 
 The CTLE action is `[W_in, R_load, I_bias, R_s, C_s]`. The whole-equalizer interface adds a normalized sixth action for the DFE tap. The analog DFE SPICE template in `DFE/` is retained as a topology reference; the active end-to-end DFE measurement is a behavioral sampled decision-feedback stage.
 
-## Latest IHP Evidence
+## Pre-ML Pipeline Evidence (bounded search)
 
-The latest real-IHP run is stored in `reports/runs/2026-09-11-ihp-complete2/`.
+`scripts/run_validation.py --model-source ihp` regenerated on 2026-09-15 with
+the Windows ngspice 47 + OpenVAF OSDI toolchain, stored in
+`reports/runs/ihp-submission-2026-09-15/`. The 100-candidate bounded search
+selects on the AC gate alone; every gate that is unchanged since the original
+Linux run (`reports/runs/ihp-submission/`) reproduces to all printed digits.
 
 | Requirement | Result | Status |
 |---|---:|---|
 | DC operating point | valid | pass |
-| Nyquist frequency | 2.5 GHz | pass |
-| HF peaking | 7.527 dB | pass, 3 to 12 dB target |
-| Power | 0.743 mW | pass, below 15 mW |
-| Eye height | 1.086 V | pass, above 100 mV |
-| Eye width | 0.565 UI | pass, above 0.4 UI |
+| HF peaking at 2.5 GHz Nyquist | 7.527 dB | pass, 3 to 12 dB target |
+| Power | 0.743 mW | pass, below 2 mW |
+| Eye height after -10 dB channel | 0.160 V (0.264 V with 1-tap DFE) | fail, 0.25 V target |
+| Eye width after channel | 0.58 UI | fail, 0.7 UI target |
 | PVT corners | 45/45 simulated and passing | pass |
 | Area estimate | 1.09e-05 mm2 | pass, first-order estimate |
 | HD3 | -24.63 dB | fail, target below -30 dB |
 | Integrated input-referred noise | 0.242 mV rms | pass, below 1.5 mV rms |
 
-The noise result is integrated from the ngspice `inoise_spectrum` vector using the RMS density equation. The raw output and report remain available for independent review.
+The eye now fails because the transient gate drives the PRBS through a lossy
+channel (about -10 dB at Nyquist) that the original evidence did not include,
+and the AC-only search cannot see the eye. The RL policy in the next section,
+which is rewarded on the post-channel eye, closes exactly this gap. The noise
+result is integrated from the ngspice `inoise_spectrum` vector using the RMS
+density equation.
 
 ## RL Result on the IHP Models
 
@@ -87,10 +95,16 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 
 ## What Is Implemented
 
-- IHP sg13g2 PSP103 OSDI model compilation through OpenVAF.
-- Local ngspice 45.2 build with OSDI enabled.
+- IHP sg13g2 PSP103 OSDI model compilation through OpenVAF (Linux, and
+  Windows via `tools/openvaf-link-shim`).
+- ngspice 47 with OSDI, one OpenMP thread per process so eight simulators run
+  in parallel.
 - Parameterized source-degenerated differential CTLE.
-- Bounded 100-candidate search.
+- Bounded 100-candidate search and a random-search baseline.
+- SAC training (`scripts/train_sac.py`): thread-parallel environments, margin
+  bonus, hold-on-success episodes, configurable eye and HD3 specs.
+- Deterministic policy evaluation against the baseline at equal budget
+  (`scripts/evaluate_policy.py`).
 - DC and AC gates from 10 MHz to 10 GHz.
 - 5 Gbps PRBS transient simulation.
 - Conventional 2-UI eye diagram generation.
@@ -99,7 +113,7 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 - 45-corner PVT sweep.
 - HD3, noise, and area measurement hooks.
 - Reproducible CSV, JSON, and PNG artifacts.
-- 40 automated tests.
+- 47 automated tests.
 
 ## Known Limitations
 
