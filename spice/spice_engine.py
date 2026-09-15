@@ -89,6 +89,12 @@ class SpiceEvaluator:
         )
         self.pdk_corner = pdk_corner
         self.osdi_model_paths = tuple(Path(path) for path in osdi_model_paths)
+        # Operating corner for the training gates (.op/.ac, transient, HD3):
+        # nominal TT / 1.2 V / 27 C unless set_corner() is called. run_pvt
+        # sweeps corners explicitly and does not use this.
+        self.corner_process: str | None = None
+        self.corner_vdd: float = 1.2
+        self.corner_temperature_c: float | None = None
         # Eye acceptance for tran_valid; keep in step with CtleSpecifications.
         self.eye_height_min_v = self.EYE_HEIGHT_MIN_V if eye_height_min_v is None else float(eye_height_min_v)
         self.eye_width_min_ui = self.EYE_WIDTH_MIN_UI if eye_width_min_ui is None else float(eye_width_min_ui)
@@ -144,6 +150,21 @@ class SpiceEvaluator:
     def model_source(self) -> str:
         return "ihp_ngspice" if self.osdi_model_paths else "ngspice_generic_level1"
 
+    def set_corner(self, process: str | None = None, vdd: float = 1.2, temperature_c: float | None = None) -> None:
+        """Simulate the training gates at this PVT corner from now on (None = nominal)."""
+        if process is not None and process not in self.GENERIC_PROCESS_MODELS:
+            raise ValueError(f"unsupported process corner: {process}")
+        self.corner_process = process
+        self.corner_vdd = float(vdd)
+        self.corner_temperature_c = temperature_c
+
+    @property
+    def corner_name(self) -> str:
+        return f"{self.corner_process or 'TT'}_{self.corner_vdd:.2f}V_{27.0 if self.corner_temperature_c is None else self.corner_temperature_c:g}C"
+
+    def _corner_kwargs(self) -> dict[str, Any]:
+        return {"vdd": self.corner_vdd, "temperature_c": self.corner_temperature_c, "pvt_process": self.corner_process}
+
     def map_actions(self, actions: np.ndarray) -> dict[str, float]:
         """Linearly map five normalized actions from [-1, 1] to SI values."""
         values = np.asarray(actions, dtype=float)
@@ -182,7 +203,7 @@ class SpiceEvaluator:
 
         try:
             parameters = self.map_actions(actions)
-            netlist = self._inject_parameters(parameters)
+            netlist = self._inject_parameters(parameters, **self._corner_kwargs())
 
             with tempfile.TemporaryDirectory(
                 prefix="autoanalog-"
@@ -429,6 +450,7 @@ class SpiceEvaluator:
             netlist = self._inject_parameters(
                 parameters,
                 transient=True,
+                **self._corner_kwargs(),
             )
 
             with tempfile.TemporaryDirectory(
@@ -519,7 +541,7 @@ class SpiceEvaluator:
         result = {"hd3_db": float("nan"), "linearity_valid": False, "error": None}
         try:
             parameters = self.map_actions(actions)
-            netlist = self._inject_parameters(parameters, stimulus="hd3")
+            netlist = self._inject_parameters(parameters, stimulus="hd3", **self._corner_kwargs())
             with tempfile.TemporaryDirectory(prefix="autoanalog-hd3-") as directory:
                 output = self._run_ngspice(self._with_commands(netlist, self._hd3_commands()), Path(directory) / "hd3")
             time_s, output_v = self._parse_transient(output)

@@ -29,7 +29,7 @@ from rl.environment import CtleEnvironment
 from rl.equalizer import EqualizerEvaluator
 from rl.gym_wrapper import make_gym_env
 from rl.pvt import all_pvt_corners
-from scripts.train_sac import build_evaluator, build_reward, build_specifications
+from scripts.train_sac import build_evaluator, build_reward, build_specifications, curriculum_corners
 from spice.spice_engine import SpiceEvaluator
 
 
@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-envs", type=int, default=8, help="rollouts simulated in parallel")
     parser.add_argument("--output-dir", default=None, help="default: <run_dir>/evaluation")
     parser.add_argument("--skip-validation", action="store_true", help="do not run PVT/HD3 validation on the best design")
+    parser.add_argument("--corners", choices=("nominal", "all", "process"), default=None, help="roll out at random PVT corners (default: the run's setting)")
     return parser.parse_args()
 
 
@@ -89,6 +90,7 @@ def rollout_batch(model, envs, rng, max_steps: int, pool: ThreadPoolExecutor) ->
                 record["best_metrics"] = {k: v for k, v in info["metrics"].items() if np.isscalar(v) or v is None}
             if info.get("all_specs_met") and record["steps_to_feasible"] is None:
                 record["steps_to_feasible"] = record["evaluations"]
+            record["corner"] = info.get("corner")
             if terminated or truncated:
                 active.remove(index)
     return records
@@ -133,6 +135,7 @@ def main() -> None:
             random_reset=True,
             terminate_on_success=True,
             run_linearity=bool(config.get("hd3")),
+            corners=curriculum_corners(args.corners or config.get("corners", "nominal")),
         )
         return make_gym_env(environment)
 
@@ -169,6 +172,14 @@ def main() -> None:
         "eye_height_min_v": specifications.eye_vertical_min_v,
         "eye_width_min_ui": specifications.eye_horizontal_min_ui,
         "hd3_enforced": bool(config.get("hd3")),
+        "corners": args.corners or config.get("corners", "nominal"),
+        "per_corner": {
+            corner: {
+                "rollouts": sum(1 for r in records if r.get("corner") == corner),
+                "feasible": sum(1 for r in records if r.get("corner") == corner and r["steps_to_feasible"] is not None),
+            }
+            for corner in sorted({r.get("corner") for r in records if r.get("corner")})
+        },
     }
 
     with (output_dir / "rollouts.csv").open("w", newline="", encoding="utf-8") as handle:
