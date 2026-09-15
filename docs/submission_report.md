@@ -225,4 +225,18 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
 
 ## Submission Position
 
-The framework, real IHP simulator backend, search loop, reports, and reproducible demonstration are complete for the pre-ML stage. The design itself is not yet fully specification-compliant because HD3 and noise fail. Those failures are visible, repeatable, and now actionable optimization targets rather than missing pipeline stages.
+The framework in the synopsis is delivered on the IHP sg13g2 130 nm PDK: a
+SAC agent drives ngspice directly through fail-fast DC, AC, post-channel
+eye and HD3 gates over a bounded five-parameter CTLE action space (six with
+the DFE tap), trained first at the nominal corner and then across all 45 PVT
+corners, with reward weights adjustable from natural-language feedback and
+the sized netlist emitted with every design. On the real PSP103 models the
+policies reach a design that passes every measured specification - peaking,
+power, post-channel eye height and width, HD3, noise, and all 45 PVT
+corners - in a median of two simulation steps from a random start, where a
+random search needs about thirteen and the AC-only bounded search does not
+reach the eye at all. Two measurement flaws that had survived the manual
+flow (HD3 leakage, decision-labelled DFE eye) were exposed by the agent
+optimising against them and are fixed with bit- and cycle-referenced
+measurements. What remains open is the analog DFE slicer as a simulated
+circuit, post-layout area, and the SkyWater backend the synopsis named.
