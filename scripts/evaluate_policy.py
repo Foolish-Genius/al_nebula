@@ -26,6 +26,7 @@ import numpy as np
 
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
+from rl.equalizer import EqualizerEvaluator
 from rl.gym_wrapper import make_gym_env
 from rl.pvt import all_pvt_corners
 from rl.reward import CtleReward
@@ -115,8 +116,12 @@ def main() -> None:
     specifications = build_specifications(config)
     evaluator = build_evaluator(config)
 
+    equalizer = bool(config.get("equalizer"))
+
     def make_env():
         env_evaluator = build_evaluator(config)
+        if equalizer:
+            env_evaluator = EqualizerEvaluator(env_evaluator)
         reward = CtleReward(
             specifications=specifications,
             invalid_penalty=config["invalid_penalty"],
@@ -163,7 +168,8 @@ def main() -> None:
         "total_evaluations": int(sac_rewards.size),
         "best_reward": best["best_reward"],
         "best_design": best["best_design"].tolist() if best["best_design"] is not None else None,
-        "best_parameters": evaluator.map_actions(best["best_design"]) if best["best_design"] is not None else None,
+        "best_parameters": (EqualizerEvaluator(evaluator) if equalizer else evaluator).map_actions(best["best_design"]) if best["best_design"] is not None else None,
+        "equalizer": equalizer,
         "best_metrics": best["best_metrics"],
         "model_source": evaluator.model_source,
         "eye_height_min_v": specifications.eye_vertical_min_v,
@@ -221,7 +227,9 @@ def main() -> None:
             pass
 
     if not args.skip_validation and best["best_design"] is not None:
-        design = best["best_design"]
+        full_design = best["best_design"]
+        design = full_design[:5]
+        equalizer_result = EqualizerEvaluator(evaluator).run(full_design) if equalizer else {}
         ac_result = evaluator.run_simulation(design)
         transient_result = evaluator.run_transient(design)
         linearity_result = evaluator.run_linearity(design)
@@ -236,12 +244,14 @@ def main() -> None:
             "tran_valid": transient_result["tran_valid"],
             "hd3_db": linearity_result["hd3_db"],
             "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < specifications.hd3_max_db),
+            "dfe_tap": equalizer_result.get("dfe_tap"),
+            "dfe_eye_height_v": equalizer_result.get("dfe_eye_height_v"),
             "pvt_pass_count": pvt_passed,
             "pvt_corner_count": len(pvt_results),
             "pvt_all_pass": pvt_passed == len(pvt_results) == 45,
         }
         ValidationReporter(output_dir).write(
-            {**summary["validation"], "model_source": evaluator.model_source, "optimizer": "sac_eval", "selected_action": design.tolist(), "parameters": summary["best_parameters"], "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9)},
+            {**summary["validation"], "model_source": evaluator.model_source, "optimizer": "sac_eval", "selected_action": full_design.tolist(), "parameters": summary["best_parameters"], "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9)},
             ac_frequency_hz=ac_result["ac_frequency_hz"],
             ac_gain_db=ac_result["ac_gain_db"],
             transient_time_s=transient_result["time_s"],

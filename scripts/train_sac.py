@@ -23,6 +23,7 @@ import numpy as np
 
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
+from rl.equalizer import EqualizerEvaluator
 from rl.gym_wrapper import make_gym_env
 from rl.reward import CtleReward
 from rl.specs import CtleSpecifications
@@ -57,6 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eye-height-min", type=float, default=None, help="eye height spec in V (default: CtleSpecifications)")
     parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
     parser.add_argument("--hd3", action="store_true", help="enforce the HD3 spec: run the linearity gate once the other specs pass")
+    parser.add_argument("--equalizer", action="store_true", help="size the whole equalizer: five CTLE values plus the one-tap DFE weight")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--gradient-steps", type=int, default=1, help="-1 matches the number of env steps per rollout")
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -89,6 +91,8 @@ def build_evaluator(config: dict) -> SpiceEvaluator:
 def build_env(config: dict):
     """Build one gym env from plain config so the vec env factory only needs plain data."""
     evaluator = build_evaluator(config)
+    if config.get("equalizer"):
+        evaluator = EqualizerEvaluator(evaluator)
     reward = CtleReward(
         specifications=build_specifications(config),
         invalid_penalty=config["invalid_penalty"],
@@ -130,6 +134,7 @@ def main() -> None:
         "eye_height_min": args.eye_height_min,
         "eye_width_min": args.eye_width_min,
         "hd3": args.hd3,
+        "equalizer": args.equalizer,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
         "margin_weight": args.margin_weight,
@@ -212,10 +217,12 @@ def main() -> None:
     print(f"best training reward {best.best_reward:.3f} at design {best.best_design.tolist()}")
 
     # Validate the best design the same way run_validation.py does, PVT included.
-    ac_result = evaluator.run_simulation(best.best_design)
-    transient_result = evaluator.run_transient(best.best_design)
-    linearity_result = evaluator.run_linearity(best.best_design)
-    pvt_results = evaluator.run_pvt(best.best_design, all_pvt_corners())
+    ctle_design = best.best_design[:5]
+    ac_result = evaluator.run_simulation(ctle_design)
+    transient_result = evaluator.run_transient(ctle_design)
+    linearity_result = evaluator.run_linearity(ctle_design)
+    pvt_results = evaluator.run_pvt(ctle_design, all_pvt_corners())
+    equalizer_result = EqualizerEvaluator(evaluator).run(best.best_design) if args.equalizer else {}
     pvt_passed = sum(bool(row["pvt_pass"]) for row in pvt_results)
     metrics = {
         "dc_valid": ac_result["dc_valid"],
@@ -232,6 +239,9 @@ def main() -> None:
         "hd3_db": linearity_result["hd3_db"],
         "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < specifications.hd3_max_db),
         "hd3_enforced": args.hd3,
+        "equalizer": args.equalizer,
+        "dfe_tap": equalizer_result.get("dfe_tap"),
+        "dfe_eye_height_v": equalizer_result.get("dfe_eye_height_v"),
         "transient_error": transient_result.get("error"),
         "model_source": evaluator.model_source,
         "optimizer": "sac",
@@ -244,7 +254,7 @@ def main() -> None:
         "eye_width_min_ui": specifications.eye_horizontal_min_ui,
         "best_training_reward": best.best_reward,
         "selected_action": best.best_design.tolist(),
-        "parameters": evaluator.map_actions(best.best_design),
+        "parameters": (EqualizerEvaluator(evaluator) if args.equalizer else evaluator).map_actions(best.best_design),
         "pvt_corner_count": len(pvt_results),
         "pvt_pass_count": pvt_passed,
         "pvt_all_pass": pvt_passed == len(pvt_results) == 45,

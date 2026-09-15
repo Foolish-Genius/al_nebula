@@ -22,7 +22,7 @@ def make_gym_env(environment: CtleEnvironment) -> Any:
         def __init__(self, inner: CtleEnvironment) -> None:
             super().__init__()
             self.inner = inner
-            self.action_space = gymnasium.spaces.Box(-1.0, 1.0, shape=(inner.ACTION_SIZE,), dtype=np.float32)
+            self.action_space = gymnasium.spaces.Box(-1.0, 1.0, shape=(inner.action_size,), dtype=np.float32)
             self.observation_space = gymnasium.spaces.Box(
                 -np.inf, np.inf, shape=(inner.observation_size,), dtype=np.float32
             )
