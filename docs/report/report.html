@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoAnalog-RL: Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.42; color: #1a1a1a; }
+  body { margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 6pt; line-height: 1.2; }
+  h2 { font-size: 15pt; margin: 18pt 0 6pt; border-bottom: 1.5px solid #2b5797; padding-bottom: 2pt; color: #163a6b; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin: 12pt 0 4pt; color: #163a6b; page-break-after: avoid; }
+  p { margin: 0 0 7pt; text-align: justify; }
+  ul, ol { margin: 0 0 7pt 18pt; padding: 0; }
+  li { margin-bottom: 2pt; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #b8c4d6; padding: 3pt 5pt; vertical-align: top; }
+  th { background: #e8eef7; text-align: left; }
+  td.num, th.num { text-align: right; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; }
+  code { background: #f2f4f7; padding: 0 2pt; }
+  pre { background: #f2f4f7; border: 1px solid #d8dee8; padding: 6pt 8pt; overflow: hidden; white-space: pre-wrap; margin: 4pt 0 10pt; page-break-inside: avoid; }
+  figure { margin: 8pt 0 12pt; text-align: center; page-break-inside: avoid; }
+  figure img { max-width: 100%; height: auto; }
+  figcaption { font-size: 9pt; color: #444; margin-top: 3pt; text-align: left; }
+  .two { display: flex; gap: 10pt; }
+  .two figure { flex: 1; margin: 4pt 0; }
+  .two figure img { max-width: 97%; }
+  .title-page { text-align: center; padding-top: 60pt; page-break-after: always; }
+  .title-page .sub { font-size: 13pt; color: #333; margin: 8pt 0 30pt; }
+  .title-page .meta { font-size: 11pt; margin: 4pt 0; }
+  .abstract { text-align: left; margin: 36pt auto 0; max-width: 150mm; border-top: 1px solid #999; border-bottom: 1px solid #999; padding: 10pt 0; }
+  .callout { background: #f7f9fc; border-left: 3px solid #2b5797; padding: 6pt 9pt; margin: 6pt 0 10pt; }
+  .pass { color: #1a7f37; font-weight: 600; }
+  .fail { color: #b42318; font-weight: 600; }
+  .pb { page-break-before: always; }
+  .small { font-size: 9pt; color: #444; }
+  svg text { font-family: "Segoe UI", Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="title-page">
+  <h1>AutoAnalog-RL</h1>
+  <div class="sub">Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning</div>
+  <div class="meta"><b>Round 0 Submission Report</b></div>
+  <div class="meta">PCIe Gen 2 (5 Gbps) CTLE + one-tap DFE receiver equalizer &middot; IHP sg13g2 130 nm open PDK</div>
+  <div class="meta">15 September 2026</div>
+  <div class="meta">Team: {{TEAM}}</div>
+  <div class="abstract">
+    <b>Abstract.</b> AutoAnalog-RL sizes a PCIe Gen 2 receiver equalizer with no human in the loop. A Soft Actor-Critic agent
+    drives ngspice directly: every environment step runs a fail-fast DC operating-point check, an AC gate for peaking, a
+    5 Gbps PRBS transient through a lossy channel with eye measurement, and an HD3 linearity gate, over a bounded
+    five-parameter CTLE action space (six with the DFE tap). Training happens on the real IHP sg13g2 PSP103 transistor
+    models, compiled from Verilog-A to OSDI and run eight simulators wide on a laptop. The trained policy reaches a design
+    that passes every measured specification &mdash; peaking, power, post-channel eye height and width, HD3, noise and all
+    45 process/voltage/temperature corners &mdash; in a median of two simulations from a random starting point, where a
+    random search needs about thirteen and an AC-only bounded search never reaches the eye specification. A two-stage
+    curriculum makes the same policy corner-robust (24/24 rollouts feasible at random PVT corners), an LLM frontend turns
+    plain-language design feedback into reward weights, and the sized netlist is emitted with every design. Along the way
+    the agent exposed two measurement flaws that the manual flow had lived with; both are fixed and documented here.
+  </div>
+</div>
+
+<h2>1. Introduction and objectives</h2>
+<p>Sizing analog front-end circuits is a search over a handful of continuous device values against a set of coupled
+specifications, evaluated by a slow simulator. For a receiver equalizer the coupling is severe: the same transistor width
+sets gain, bandwidth, power, linearity and noise, and the specification that matters most &mdash; the eye opening after
+the channel &mdash; is only visible in a transient simulation. Manual sweeps do not scale, and generic optimisers spend
+most of their simulation budget in infeasible regions.</p>
+<p>The Round 0 synopsis proposed AutoAnalog-RL: a sample-efficient Soft Actor-Critic (SAC) agent paired with a headless
+Python-to-ngspice pipeline over a bounded 5-parameter action space, with fail-fast DC checks, curriculum learning across
+45 PVT corners, an LLM frontend that maps natural-language feedback to reward weights, and a production-ready schematic
+as the output. Table 1 lists each promise and its status in this submission.</p>
+
+<table>
+<tr><th>Synopsis promise</th><th>Status in this submission</th></tr>
+<tr><td>PCIe Gen 2 (5 Gbps) CTLE + 1-tap DFE sized with zero human intervention</td><td><span class="pass">Delivered.</span> SAC sizes the CTLE end to end; the DFE tap is either swept per design or sized by the agent (<code>--equalizer</code>). Section 7.</td></tr>
+<tr><td>Skywater 130 nm PDK</td><td><span class="fail">Changed</span> to the IHP sg13g2 130 nm PDK; reason in Section 3.</td></tr>
+<tr><td>Sample-efficient SAC agent</td><td><span class="pass">Delivered.</span> Converges within ~2k environment steps; median 2 simulations to a feasible design. Section 6.</td></tr>
+<tr><td>Headless Python-to-ngspice pipeline</td><td><span class="pass">Delivered</span>, including a Windows toolchain for the PSP103 OSDI models. Section 4.</td></tr>
+<tr><td>Bounded 5-parameter action space, fail-fast DC checks</td><td><span class="pass">Delivered.</span> Section 5.</td></tr>
+<tr><td>Curriculum learning across 45 PVT corners</td><td><span class="pass">Delivered.</span> Nominal stage then corner-randomised stage; 24/24 rollouts feasible at random corners. Section 7.</td></tr>
+<tr><td>LLM frontend: natural-language feedback to reward weights</td><td><span class="pass">Delivered.</span> Section 8.</td></tr>
+<tr><td>Production-ready schematic, faster than manual sweeps</td><td><span class="pass">Delivered.</span> Sized netlist per design; 2 vs ~13 simulations; the 100-candidate search fails the eye. Sections 6 and 9.</td></tr>
+</table>
+<p class="small">Table 1. Synopsis deliverables and their status.</p>
+
+<h2>2. System overview</h2>
+<p>Figure 1 shows the loop. The agent's action is a normalised design vector; the evaluator maps it to device values,
+renders the CTLE netlist, and runs the gates in order, stopping at the first failure so that infeasible designs cost as
+little simulation as possible. Metrics feed a transparent reward; the environment returns the design, its metrics and
+normalised constraint violations as the observation. Everything after the simulator adapter is simulator-agnostic.</p>
+
+<figure>
+<svg viewBox="0 0 760 210" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2b5797"/></marker></defs>
+  <g font-size="11" fill="#1a1a1a">
+    <rect x="10" y="70" width="120" height="60" rx="6" fill="#e8eef7" stroke="#2b5797"/>
+    <text x="70" y="94" text-anchor="middle" font-weight="600">SAC agent</text>
+    <text x="70" y="110" text-anchor="middle">stable-baselines3</text>
+    <rect x="170" y="70" width="130" height="60" rx="6" fill="#e8eef7" stroke="#2b5797"/>
+    <text x="235" y="90" text-anchor="middle" font-weight="600">Environment</text>
+    <text x="235" y="105" text-anchor="middle">delta actions, reward,</text>
+    <text x="235" y="119" text-anchor="middle">corner curriculum</text>
+    <rect x="340" y="20" width="150" height="160" rx="6" fill="#f7f9fc" stroke="#2b5797"/>
+    <text x="415" y="38" text-anchor="middle" font-weight="600">SpiceEvaluator</text>
+    <text x="415" y="58" text-anchor="middle">1. .op  (fail fast)</text>
+    <text x="415" y="76" text-anchor="middle">2. .ac  peaking, power</text>
+    <text x="415" y="94" text-anchor="middle">3. PRBS7 .tran + channel</text>
+    <text x="415" y="112" text-anchor="middle">    eye, 1-tap DFE</text>
+    <text x="415" y="130" text-anchor="middle">4. HD3 (once others pass)</text>
+    <text x="415" y="152" text-anchor="middle">validation: noise, area,</text>
+    <text x="415" y="168" text-anchor="middle">45-corner PVT</text>
+    <rect x="530" y="55" width="110" height="90" rx="6" fill="#e8eef7" stroke="#2b5797"/>
+    <text x="585" y="78" text-anchor="middle" font-weight="600">ngspice 47</text>
+    <text x="585" y="96" text-anchor="middle">x8 processes</text>
+    <text x="585" y="112" text-anchor="middle">IHP sg13g2 PSP103</text>
+    <text x="585" y="128" text-anchor="middle">via OpenVAF/OSDI</text>
+    <rect x="660" y="55" width="90" height="90" rx="6" fill="#eef7ea" stroke="#1a7f37"/>
+    <text x="705" y="80" text-anchor="middle" font-weight="600">Outputs</text>
+    <text x="705" y="98" text-anchor="middle">sized netlist</text>
+    <text x="705" y="114" text-anchor="middle">JSON / CSV / PNG</text>
+    <text x="705" y="130" text-anchor="middle">checkpoints</text>
+    <rect x="170" y="150" width="130" height="44" rx="6" fill="#fff6e5" stroke="#b7791f"/>
+    <text x="235" y="168" text-anchor="middle" font-weight="600">LLM frontend</text>
+    <text x="235" y="184" text-anchor="middle">feedback &rarr; reward weights</text>
+    <line x1="130" y1="90" x2="170" y2="90" stroke="#2b5797" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="150" y="82" text-anchor="middle" font-size="9">action</text>
+    <line x1="170" y1="112" x2="130" y2="112" stroke="#2b5797" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="150" y="126" text-anchor="middle" font-size="9">obs, reward</text>
+    <line x1="300" y1="100" x2="340" y2="100" stroke="#2b5797" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="490" y1="100" x2="530" y2="100" stroke="#2b5797" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="640" y1="100" x2="660" y2="100" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="235" y1="150" x2="235" y2="130" stroke="#b7791f" stroke-width="1.5" marker-end="url(#a)"/>
+  </g>
+</svg>
+<figcaption>Figure 1. AutoAnalog-RL loop. The evaluator runs the ngspice gates in fail-fast order; the environment and reward are simulator-agnostic; the LLM frontend adjusts reward weights between runs.</figcaption>
+</figure>
+
+<p>The repository (<code>al_nebula</code>) is organised by responsibility: <code>netlists/</code> owns the CTLE
+topology, <code>spice/</code> the simulator adapter and every measurement, <code>rl/</code> the specifications, reward,
+environment, DFE model, PVT matrix and LLM feedback parser, <code>scripts/</code> the training, baseline, evaluation,
+validation and reporting entry points, and <code>tests/</code> a 58-test regression suite that runs without ngspice.</p>
+
+<h2>3. Process design kit</h2>
+<p>The synopsis named the SkyWater sky130 PDK. The implementation targets the IHP sg13g2 open PDK, also a 130 nm node.
+The team switched during development because the sky130 simulation flow was too slow for an RL loop that runs three
+ngspice analyses per environment step, whereas IHP's PSP103 Verilog-A models compile with OpenVAF to OSDI and run
+natively in ngspice 47 at about 0.6 s per environment step with eight simulators in parallel. PSP103 is a foundry-grade
+surface-potential compact model, so this is a strengthening of the device physics rather than a simplification.
+The framework is PDK-agnostic by construction: the generic Level-1 and IHP paths share every line of code except the
+model library selected by <code>SpiceEvaluator.for_model_source()</code>, so a sky130 backend is a netlist variant plus
+a corner-library mapping.</p>
+
+<h2>4. Circuit, channel and simulation backend</h2>
+<h3>4.1 Circuit and specifications</h3>
+<p>The CTLE is a differential NMOS pair with resistive loads and RC source degeneration (Figure 2). The agent sizes five
+values: input width <i>W</i><sub>in</sub>, load <i>R</i><sub>load</sub>, tail current <i>I</i><sub>bias</sub>,
+degeneration resistance <i>R</i><sub>s</sub> and degeneration capacitance <i>C</i><sub>s</sub>. The transient gate drives a
+two-period PRBS7 at 5 Gbps through a two-section RC channel with about &minus;10 dB loss at the 2.5 GHz Nyquist
+frequency (the loss slope of a PCIe Gen 2 class FR-4 trace); the DC and AC gates bypass the channel so peaking measures
+the CTLE alone. A one-tap decision-feedback stage operates on the UI-centre samples of the CTLE output.</p>
+
+<div class="two">
+<figure>
+<svg viewBox="0 0 330 200" width="100%" xmlns="http://www.w3.org/2000/svg">
+ <g stroke="#1a1a1a" stroke-width="1.4" fill="none" font-size="10">
+  <line x1="40" y1="20" x2="290" y2="20"/><text x="150" y="14" fill="#1a1a1a" stroke="none" font-size="10">VDD (1.2 V)</text>
+  <rect x="70" y="30" width="14" height="36"/><text x="20" y="52" fill="#1a1a1a" stroke="none">R_load</text>
+  <rect x="246" y="30" width="14" height="36"/><text x="266" y="52" fill="#1a1a1a" stroke="none">R_load</text>
+  <line x1="77" y1="20" x2="77" y2="30"/><line x1="253" y1="20" x2="253" y2="30"/>
+  <line x1="77" y1="66" x2="77" y2="100"/><line x1="253" y1="66" x2="253" y2="100"/>
+  <circle cx="77" cy="82" r="2.5" fill="#1a1a1a"/><text x="45" y="86" fill="#1a1a1a" stroke="none">outP</text>
+  <circle cx="253" cy="82" r="2.5" fill="#1a1a1a"/><text x="262" y="86" fill="#1a1a1a" stroke="none">outN</text>
+  <!-- M1 -->
+  <line x1="77" y1="100" x2="77" y2="112"/><line x1="66" y1="112" x2="77" y2="112"/><line x1="66" y1="104" x2="66" y2="134"/><line x1="60" y1="104" x2="60" y2="134"/>
+  <line x1="66" y1="126" x2="77" y2="126"/><line x1="77" y1="126" x2="77" y2="140"/><line x1="40" y1="119" x2="60" y2="119"/>
+  <text x="14" y="123" fill="#1a1a1a" stroke="none">inP</text><text x="84" y="122" fill="#1a1a1a" stroke="none">M1 W_in</text>
+  <!-- M2 -->
+  <line x1="253" y1="100" x2="253" y2="112"/><line x1="264" y1="112" x2="253" y2="112"/><line x1="264" y1="104" x2="264" y2="134"/><line x1="270" y1="104" x2="270" y2="134"/>
+  <line x1="264" y1="126" x2="253" y2="126"/><line x1="253" y1="126" x2="253" y2="140"/><line x1="290" y1="119" x2="270" y2="119"/>
+  <text x="296" y="123" fill="#1a1a1a" stroke="none">inN</text><text x="200" y="122" fill="#1a1a1a" stroke="none">M2 W_in</text>
+  <!-- degeneration -->
+  <rect x="95" y="146" width="30" height="10"/><text x="92" y="170" fill="#1a1a1a" stroke="none">R_s</text>
+  <rect x="205" y="146" width="30" height="10"/><text x="212" y="170" fill="#1a1a1a" stroke="none">R_s</text>
+  <line x1="77" y1="140" x2="77" y2="151"/><line x1="77" y1="151" x2="95" y2="151"/><line x1="125" y1="151" x2="165" y2="151"/>
+  <line x1="253" y1="140" x2="253" y2="151"/><line x1="253" y1="151" x2="235" y2="151"/><line x1="205" y1="151" x2="165" y2="151"/>
+  <line x1="77" y1="140" x2="140" y2="140"/><line x1="140" y1="134" x2="140" y2="146"/><line x1="146" y1="134" x2="146" y2="146"/><line x1="146" y1="140" x2="253" y2="140"/>
+  <text x="128" y="130" fill="#1a1a1a" stroke="none">C_s</text>
+  <!-- tail -->
+  <line x1="165" y1="151" x2="165" y2="162"/><circle cx="165" cy="172" r="10"/><line x1="165" y1="165" x2="165" y2="179"/><polygon points="161,176 165,181 169,176" fill="#1a1a1a"/>
+  <line x1="165" y1="182" x2="165" y2="192"/><line x1="155" y1="192" x2="175" y2="192"/>
+  <text x="180" y="176" fill="#1a1a1a" stroke="none">I_bias</text>
+ </g>
+</svg>
+<figcaption>Figure 2. Source-degenerated differential CTLE; the five sized values are labelled. Devices are IHP sg13g2 <code>sg13_lv_nmos</code>, L = 130 nm.</figcaption>
+</figure>
+<figure>
+<table style="margin-top:0">
+<tr><th>Parameter</th><th class="num">Lower</th><th class="num">Upper</th></tr>
+<tr><td>W<sub>in</sub></td><td class="num">0.5 &micro;m</td><td class="num">50 &micro;m</td></tr>
+<tr><td>R<sub>load</sub></td><td class="num">100 &Omega;</td><td class="num">1000 &Omega;</td></tr>
+<tr><td>I<sub>bias</sub></td><td class="num">0.1 mA</td><td class="num">2 mA</td></tr>
+<tr><td>R<sub>s</sub></td><td class="num">10 &Omega;</td><td class="num">500 &Omega;</td></tr>
+<tr><td>C<sub>s</sub></td><td class="num">1 fF</td><td class="num">1 pF</td></tr>
+<tr><td>DFE tap (optional 6th)</td><td class="num">&minus;0.5</td><td class="num">+0.5</td></tr>
+</table>
+<figcaption>Table 2. Bounded action space; actions in [&minus;1, 1] map linearly onto these ranges.</figcaption>
+</figure>
+</div>
+
+<table>
+<tr><th>Specification</th><th>Target</th><th>Gate</th><th>In the reward?</th></tr>
+<tr><td>High-frequency peaking at 2.5 GHz</td><td>3 dB &le; peaking &le; 12 dB</td><td>.ac 10 MHz&ndash;10 GHz</td><td>yes</td></tr>
+<tr><td>Power</td><td>&le; 2 mW</td><td>.op</td><td>yes, plus a continuous charge inside the feasible set</td></tr>
+<tr><td>Eye height after channel</td><td>&ge; 0.25 V (IHP; 0.5 V on the Level-1 model)</td><td>PRBS7 .tran</td><td>yes</td></tr>
+<tr><td>Eye width after channel</td><td>&ge; 0.7 UI</td><td>PRBS7 .tran</td><td>yes</td></tr>
+<tr><td>HD3 at 100 MHz, 100 mV<sub>pp,diff</sub></td><td>&le; &minus;30 dB</td><td>single-tone .tran</td><td>with <code>--hd3</code></td></tr>
+<tr><td>Input-referred noise, 10 MHz&ndash;5 GHz</td><td>&le; 1.5 mV rms</td><td>.noise</td><td>validation only</td></tr>
+<tr><td>Area</td><td>reported</td><td>first-order device geometry</td><td>validation only</td></tr>
+<tr><td>PVT</td><td>45/45 corners pass peaking</td><td>5 process &times; 3 supply &times; 3 temperature</td><td>curriculum (Section 7) and validation</td></tr>
+</table>
+<p class="small">Table 3. Specifications, the gate that measures each, and whether it shapes the reward.</p>
+
+<h3>4.2 Simulation backend</h3>
+<p>The sg13g2 transistor deck uses PSP103, which ngspice loads as OSDI shared libraries compiled from the PDK's
+Verilog-A sources with OpenVAF-reloaded. The original evidence run used a Linux build; this submission adds a Windows
+path so training could run on the team's laptop: OpenVAF's Windows binary expects MSVC's <code>link.exe</code>, and a
+small drop-in linker shim (<code>tools/openvaf-link-shim</code>) rewrites its link line for 64-bit MinGW, supplying the
+<code>__chkstk</code> stack probe and the UCRT import. The resulting <code>psp103.osdi</code>, <code>psp103_nqs.osdi</code>
+and <code>mosvar.osdi</code> load in the stock ngspice 47 Windows build and reproduce the Linux AC and HD3 numbers to
+every printed digit.</p>
+<p>Throughput mattered more than any single simulation: one PSP103 transient takes about 1.5 s, but eight in parallel
+initially took 90 s each, because ngspice ignores <code>OMP_NUM_THREADS</code> and spins its own OpenMP pool per
+process; with eight processes the spin-waiting threads oversubscribed the twelve cores by an order of magnitude. Pinning
+each ngspice to one thread through the generated <code>.spiceinit</code> restored 1.4 s for eight concurrent transients,
+a 65&times; difference, and is what makes 0.6 s per environment step possible. The environments run on threads rather
+than processes because <code>subprocess.run</code> releases the GIL while ngspice runs, and spawning eight Python
+workers that each load CUDA torch failed DLL initialisation on Windows.</p>
+
+<h2>5. Reinforcement-learning formulation</h2>
+<p><b>State.</b> The normalised design vector, a DC-valid flag, the four scaled metrics (peaking, power, eye height,
+eye width) and the normalised violation of every enforced constraint. <b>Action.</b> A delta on the design vector,
+scaled by 0.2 and clipped to the box, so the agent sizes incrementally; the whole-equalizer variant adds the DFE tap.
+<b>Episode.</b> Up to 30 steps from a random design; a DC failure is penalised but does not end the episode, so the agent
+can step back out of an invalid region.</p>
+<p><b>Reward.</b> With normalised violations <i>v<sub>i</sub></i> (1.0 is a full specification's worth of miss) and
+weights <i>w<sub>i</sub></i>:</p>
+<pre>reward = -Σ w_i · v_i  -  w_eff · min(1, P / P_max)  +  [all specs met] · (B_success + w_margin · min(1, tightest margin))
+DC failure: reward = -10</pre>
+<p>The continuous power charge keeps a gradient inside the feasible set; the success bonus (20) and the margin bonus
+(weight 5) pull the agent into, not onto, the feasible region. <b>Algorithm.</b> SAC (stable-baselines3 2.9) with automatic
+entropy tuning from 0.1, batch 256, one gradient step per environment step, 500 random warm-up steps, eight parallel
+environments.</p>
+
+<h3>5.1 Why the first runs plateaued, and the fix</h3>
+<p>The first SAC runs (5000 steps on the generic Level-1 model) reached a feasible design in about 85% of episodes but
+never became reliable and did not beat random search. Two causes: the episode ended on the first feasible step, so nothing
+rewarded margin and the policy sat exactly on the eye-height boundary where action noise pushed it off; and a &minus;100
+DC penalty dwarfed the unit-scale shaping costs, so the critic spent its capacity on a cliff. Keeping the episode running
+after success (<code>--hold-on-success</code>), paying for margin, and a &minus;10 DC penalty fixed it: on Level-1 the policy went
+from 79% to 95% feasible steps by 5k steps, with the median eye height moving from 0.43 V to 0.92 V against a 0.5 V spec.
+Deterministic rollouts of the Level-1 policy reach feasibility in 20/20 cases, median 2.5 steps.</p>
+
+<h3>5.2 Eye-height target on the real models</h3>
+<p>The eye targets had been calibrated so that about one in ten random Level-1 designs passes. On PSP103 none of 400
+random designs reaches 0.5 V (best 0.45 V, median 0.17 V): the real devices have roughly half the gain. The IHP target
+is therefore 0.25 V, which restores the same 10% random feasibility and sits above the ~175 mV differential eye PCIe
+Gen 2 requires at the receiver.</p>
+
+<h2>6. Results on the IHP models</h2>
+<p>All runs use <code>--model-source ihp --eye-height-min 0.25 --n-envs 8 --hold-on-success --random-reset
+--margin-weight 5 --invalid-penalty -10 --max-steps 30 --batch-size 256 --gradient-steps -1 --ent-coef auto_0.1</code>.
+"Training feasible" is the fraction of environment steps in the last 4k steps at which every enforced specification was
+met. Evaluation (<code>scripts/evaluate_policy.py</code>) rolls the trained policy out deterministically from 20 random
+starting designs, then validates the best design with the full gate set and all 45 PVT corners.</p>
+
+<table>
+<tr><th>Run</th><th class="num">Steps</th><th>Variant</th><th class="num">Training feasible</th><th class="num">Rollouts feasible</th><th>Steps to feasible (median / worst)</th><th>Best design: eye, power, HD3, PVT</th></tr>
+<tr><td>sac-ihp-v1 (seed 1)</td><td class="num">30k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>2 / 4</td><td>0.327 V, 1.22 mW, &minus;57.8 dB, 45/45</td></tr>
+<tr><td>sac-ihp-v1-s2 (seed 2)</td><td class="num">12k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>3 / 4</td><td>0.316 V, 1.22 mW, &minus;57.7 dB, 45/45</td></tr>
+<tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">96.2%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.344 V, 1.01 mW, &minus;68.2 dB, 45/45</td></tr>
+<tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.2%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
+<tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">{{EQ_TRAIN}}</td><td class="num">{{EQ_ROLLOUTS}}</td><td>{{EQ_STEPS}}</td><td>{{EQ_DESIGN}}</td></tr>
+</table>
+<p class="small">Table 4. Training runs on the IHP sg13g2 PSP103 models. Every best design passes peaking, power, eye height and width, HD3, noise and all 45 corners.</p>
+
+<figure>
+<img src="{{fig:reports/screenshots/learning_curves_final.png}}" alt="learning curves" style="max-width:96%">
+<figcaption>Figure 3. Learning curves for the IHP runs (500-step moving average): reward per step, fraction of steps meeting every specification, and post-channel eye height against the 0.25 V target. All runs converge within about 2k steps; the curriculum stage starts converged because it resumes the nominal policy.</figcaption>
+</figure>
+
+<p><b>Against random search.</b> A 3000-design random search on the same models and reward
+(<code>scripts/baseline_random.py</code>) satisfies every specification 7.9% of the time (238/3000); its first feasible
+design is number 27, so about thirteen simulations per feasible design. The policies reach a feasible design in a median
+of two to three simulations from an arbitrary start; at the same 49&ndash;53 simulation budget their best reward is
+20.7&ndash;20.8 against 19.65 for random search (Figure 4). Random search's best over all 3000 designs (21.12) edges the
+policies' best within their short rollouts, at sixty times the budget. The AC-only 100-candidate bounded search of the
+pre-ML pipeline, which selects on peaking alone, produces a design with a post-channel eye of only 0.160 V.</p>
+
+<div class="two">
+<figure><img src="{{fig:reports/eval-ihp-v1/budget_curve.png}}" alt="budget curve"><figcaption>Figure 4. Best reward found versus number of simulated designs, policy rollouts against random search (seed 1).</figcaption></figure>
+<figure><img src="{{fig:reports/eval-ihp-v1/eye_diagram.png}}" alt="eye diagram"><figcaption>Figure 5. Two-UI eye diagram of the seed-1 policy design after the &minus;10 dB channel: 0.327 V / 0.88 UI.</figcaption></figure>
+</div>
+<div class="two">
+<figure><img src="{{fig:reports/eval-ihp-v1/ac_response.png}}" alt="AC response"><figcaption>Figure 6. AC response of the same design: 4.2 dB of peaking at the 2.5 GHz Nyquist frequency.</figcaption></figure>
+<figure><img src="{{fig:reports/eval-ihp-pvt/pvt_peaking.png}}" alt="PVT"><figcaption>Figure 7. Peaking of the curriculum policy's design across all 45 PVT corners; every corner inside the 3&ndash;12 dB window.</figcaption></figure>
+</div>
+
+<h2>7. PVT curriculum and whole-equalizer sizing</h2>
+<h3>7.1 Curriculum across 45 corners</h3>
+<p>Stage 1 trains at the nominal corner (TT, 1.2 V, 27 &deg;C). Stage 2 resumes the same policy with
+<code>--corners all --resume</code>: each episode is simulated at a corner drawn uniformly from the 45-corner matrix
+(5 process &times; 3 supply &times; 3 temperature), and the policy is not told which, so it must size for every corner
+from the metrics it observes. Resumed from the HD3-enforced nominal policy, the corner-randomised stage stayed at 95&ndash;96%
+feasible steps from its first window (per process corner: SS 97%, FS 96%, FF 95%, TT 95%, SF 94%), i.e. the nominal
+policy transferred and then held. In evaluation, rolled out from random designs at random corners, 24 of 24 rollouts
+reached a fully feasible design (19 distinct corners drawn, spanning every process, supply and temperature), median two
+simulation steps, worst four; the best design passes all 45 corners with HD3 at &minus;61.9 dB (Figure 7).</p>
+
+<h3>7.2 Whole-equalizer sizing (CTLE + DFE tap)</h3>
+<p><code>--equalizer</code> extends the action to six values: the five CTLE parameters and the one-tap DFE weight in
+[&minus;0.5, 0.5]. The DFE is applied to the CTLE's post-channel UI-centre samples whenever a waveform exists, and the
+post-DFE eye height drives the reward. {{EQ_TEXT}}</p>
+
+<h2>8. LLM frontend for the reward</h2>
+<p><code>scripts/reward_from_feedback.py</code> turns an engineer's sentence into the reward's per-specification weights,
+the continuous power charge and the margin bonus (<code>rl/feedback.py</code>). Claude (Anthropic SDK, structured JSON
+output validated against a schema) produces them when credentials are present; a context-aware keyword parser is the
+offline fallback, so the loop never blocks on an API. The JSON is passed to <code>train_sac.py --reward-settings</code>
+and recorded in the run's configuration. Example, offline path:</p>
+<pre>> "We are power constrained: current budget matters much more than eye margin, and we don't care about linearity"
+weights: power 3.0, eye_vertical_v 0.33, hd3 0.33 (others 1.0); efficiency_weight 3.0; margin_weight 5.0
+> "Open the eye as much as possible; power is not important"
+weights: eye_vertical_v 3.0, power 0.33; efficiency_weight 0.33</pre>
+
+<h2>9. Deliverables and reproducibility</h2>
+<p>Every script writes JSON, CSV and PNG evidence to its output directory, and every validation writes the sized netlist
+<code>sized_ctle.sp</code> &mdash; the deliverable schematic &mdash; with the device values, model source and DFE tap in its
+header. Prerequisites: an IHP Open PDK checkout with compiled OSDI models (<code>IHP_PDK_ROOT</code>), ngspice 44+
+(<code>NGSPICE</code>), and <code>pip install -e .[rl]</code>; <code>python scripts/check_pdk.py</code> confirms readiness.</p>
+<pre># train on the IHP models (nominal corner), then the corner curriculum
+python scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --hd3 --timesteps 12000 --n-envs 8 \
+  --hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10 --max-steps 30 --batch-size 256 \
+  --gradient-steps -1 --learning-starts 500 --ent-coef auto_0.1 --seed 1 --output-dir reports/sac-ihp-hd3
+python scripts/train_sac.py ... --corners all --resume reports/sac-ihp-hd3/sac_final.zip --timesteps 8000 \
+  --output-dir reports/sac-ihp-pvt
+# random-search baseline with the same reward, then evaluation and comparison
+python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 --invalid-penalty -10 \
+  --evaluations 3000 --n-workers 8 --output-dir reports/baseline-ihp-3000
+python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 --baseline reports/baseline-ihp-3000
+# pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
+python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission</pre>
+<p>Table 5 lists the artifacts behind every number in this report.</p>
+<table>
+<tr><th>Artifact</th><th>Contents</th></tr>
+<tr><td><code>reports/sac-ihp-*/</code></td><td>per-step CSV, SB3 monitor files, checkpoints every 4k steps, final model, config.json, validation.json, plots, sized netlist</td></tr>
+<tr><td><code>reports/eval-ihp-*/</code></td><td>evaluation.json (rollout statistics, per-corner breakdown, comparison), rollouts.csv, budget_curve.png/csv, validation plots, sized netlist</td></tr>
+<tr><td><code>reports/baseline-ihp-3000/</code></td><td>3000 random designs with rewards and metrics; best design validated</td></tr>
+<tr><td><code>reports/runs/ihp-submission-2026-09-15/</code></td><td>pre-ML bounded search with every gate, regenerated on the Windows toolchain</td></tr>
+<tr><td><code>reports/screenshots/</code></td><td>live training captures and learning curves taken every 15 minutes during training</td></tr>
+<tr><td><code>docs/submission_report.md</code>, <code>README.md</code></td><td>technical report and run instructions in the repository</td></tr>
+</table>
+<p class="small">Table 5. Evidence artifacts.</p>
+
+<h2>10. Measurement findings</h2>
+<p>Two measurement flaws survived the manual flow and were exposed when the agent optimised against them. Both are fixed
+and unit-tested, and every number in this report uses the corrected measurements.</p>
+<p><b>HD3.</b> The linearity gate FFT'd the last 25 ns of a 100 MHz tone with a rectangular window: 2.5 cycles, so the
+fundamental fell between 40 MHz bins and its spectral leakage filled the 300 MHz bin, putting a false floor of about
+&minus;25 dB on every design. HD3 was reported as failing in every earlier version of the evidence, and an HD3-enforced
+training run could not move it past &minus;26 dB because the number did not depend on the circuit (a sweep of each sizing
+knob over its full range confirmed this). Analysing an integer number of periods with a Hann taper gives &minus;58 dB for the
+same designs; the circuit was always linear enough, by about 28 dB.</p>
+<p><b>DFE eye.</b> The one-tap DFE eye was labelled by the DFE's own hard decisions rather than the transmitted bits. A large
+tap separates the two decision classes by itself, so the metric rewards the tap regardless of the signal. The whole-equalizer
+agent found this within 2k steps, drove the tap to its +0.5 bound and reported a 0.70 V eye on a design whose receiver
+decides 54 of 127 bits wrongly. The eye is now measured against the PRBS bits: correlation-aligned UI-centre samples, a
+slicer at the midpoint of the two symbol populations, the DFE fed its own decisions (so error propagation is modelled),
+bit errors counted, zero eye on any error. With the honest metric a one-tap DFE still helps: the CTLE-only policy design
+goes from 0.327 V to 0.455 V at tap +0.075 with no errors.</p>
+<p><b>Noise</b> was checked rather than corrected: the gate integrates ngspice's input-referred <code>inoise_spectrum</code>
+over 10 MHz&ndash;5 GHz and reports 0.2420 mV rms; ngspice's own band integral, now recorded alongside, gives 0.2417 mV rms.</p>
+
+<h2>11. Pre-ML pipeline evidence</h2>
+<p>For completeness, the bounded search that preceded the RL work (<code>run_validation.py</code>, 100 candidates
+selected on the AC gate, seed 23), regenerated on the Windows toolchain: peaking 7.527 dB, power 0.743 mW, eye 0.160 V /
+0.58 UI after the channel (0.310 V with the swept one-tap DFE, no bit errors), HD3 &minus;58.5 dB, input-referred noise
+0.242 mV rms, area estimate 1.09&times;10<sup>&minus;5</sup> mm<sup>2</sup>, 45/45 PVT corners. Every gate that is unchanged
+since the original Linux run reproduces to all printed digits; the eye fails only because the transient gate now includes
+the lossy channel that the AC-only search cannot see &mdash; the gap the RL policy closes.</p>
+
+<h2>12. Deviations, limitations and next steps</h2>
+<ul>
+<li><b>PDK.</b> IHP sg13g2 instead of SkyWater sky130 (Section 3).</li>
+<li><b>DFE.</b> The DFE in the loop is the behavioural one-tap stage; the analog slicer in <code>DFE/</code> is not simulated end to end.</li>
+<li><b>Area</b> is a first-order active-device estimate, not a post-layout result.</li>
+<li><b>Corner awareness.</b> The curriculum policy is robust because it is trained blind across corners; adding the corner to the observation is a natural extension.</li>
+<li><b>Design space.</b> R<sub>load</sub> sits at its 1 k&Omega; bound in most designs; wider bounds and topology variants are the next lever.</li>
+</ul>
+<p>Next steps, in order of value: simulate the analog DFE slicer inside the transient gate so the tap becomes a
+device-level knob; corner-aware observations; Bayesian-optimisation and CMA-ES baselines at equal budget with a
+wall-clock comparison against a manual sweep; a closed LLM loop that reads each validation report and proposes the next
+reward adjustment; and, if a future round requires it, the sky130 backend.</p>
+
+<h2>Appendix A. Sized netlist of the curriculum policy's best design</h2>
+<pre style="font-size:7.8pt;line-height:1.25">{{include:reports/eval-ihp-pvt/sized_ctle.sp}}</pre>
+
+<h2>Appendix B. Training configuration</h2>
+<table>
+<tr><th>Setting</th><th>Value</th></tr>
+<tr><td>Algorithm</td><td>SAC, MlpPolicy (stable-baselines3 2.9.0, torch 2.14 CUDA)</td></tr>
+<tr><td>Parallel environments</td><td>8, thread-based, one ngspice process each</td></tr>
+<tr><td>Episode</td><td>30 steps, random initial design, held after success</td></tr>
+<tr><td>Action scale</td><td>0.2 of the normalised box per step</td></tr>
+<tr><td>Reward</td><td>invalid &minus;10, success +20, margin weight 5, power charge weight 1</td></tr>
+<tr><td>Batch / gradient steps</td><td>256 / one per environment step</td></tr>
+<tr><td>Entropy coefficient</td><td>automatic, initial 0.1</td></tr>
+<tr><td>Warm-up</td><td>500 random steps (none when resuming)</td></tr>
+<tr><td>Throughput</td><td>0.5&ndash;0.7 s per environment step on a 12-core laptop; 12k steps in about 2 h</td></tr>
+<tr><td>Tests</td><td>58, run without ngspice</td></tr>
+</table>
+
+</body>
+</html>
