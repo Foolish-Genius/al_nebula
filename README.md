@@ -62,11 +62,11 @@ python scripts/train_sac.py --timesteps 30000 --n-envs 8 --hold-on-success   --r
 python scripts/sac_progress.py reports/sac-long
 ```
 
-Add `--hd3` to enforce the HD3 spec: the linearity gate then runs once the
-other specs pass and its violation enters the reward, which is the only way
-the agent can fix the one spec the IHP design still fails. To evaluate a
-checkpoint without exploration noise and compare it with random search at
-equal budget:
+Add `--hd3` to enforce the HD3 spec in the reward (the linearity gate runs
+once the other specs pass) and `--equalizer` to size the whole equalizer:
+the five CTLE values plus the one-tap DFE weight as a six-value action, with
+the post-DFE eye driving the reward. To evaluate a checkpoint without
+exploration noise and compare it with random search at equal budget:
 
 ```bash
 python scripts/baseline_random.py --evaluations 5000 --output-dir reports/baseline-5000
@@ -116,9 +116,11 @@ several simulators in flight its spin-waiting threads made PSP103 transients
 sixty times slower. The generic Level-1 path remains available for fast
 debugging.
 
-The current real-IHP run passes DC, AC peaking, eye, power, area estimate,
-input-referred noise, and all 45 PVT corners. HD3 remains the measured strict
-failure and is the next optimization target.
+On the IHP models the SAC design passes DC, AC peaking, the post-channel eye,
+power, HD3, input-referred noise, the area estimate, and all 45 PVT corners.
+HD3 was reported as failing (about -25 dB) until 2026-09-15; that was
+spectral leakage from a 2.5-cycle rectangular FFT window in the measurement,
+and an integer-cycle Hann window gives about -58 dB for the same designs.
 
 `SpiceEvaluator.run_simulation()` implements the `.op` and `.ac` gates;
 `run_transient()` implements the channel + PRBS eye gate plus the behavioural
