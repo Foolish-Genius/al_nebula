@@ -24,6 +24,7 @@ import numpy as np
 from analysis.reporting import ValidationReporter
 from rl.environment import CtleEnvironment
 from rl.equalizer import EqualizerEvaluator
+from rl.feedback import RewardSettings
 from rl.gym_wrapper import make_gym_env
 from rl.reward import CtleReward
 from rl.specs import CtleSpecifications
@@ -59,6 +60,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
     parser.add_argument("--hd3", action="store_true", help="enforce the HD3 spec: run the linearity gate once the other specs pass")
     parser.add_argument("--equalizer", action="store_true", help="size the whole equalizer: five CTLE values plus the one-tap DFE weight")
+    parser.add_argument(
+        "--reward-settings",
+        default=None,
+        help="JSON from scripts/reward_from_feedback.py: per-spec weights, efficiency_weight and margin_weight (overrides --margin-weight)",
+    )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--gradient-steps", type=int, default=1, help="-1 matches the number of env steps per rollout")
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -88,17 +94,25 @@ def build_evaluator(config: dict) -> SpiceEvaluator:
     )
 
 
+def build_reward(config: dict) -> CtleReward:
+    """Reward from config; a reward-settings file (LLM feedback) overrides the scalar flags."""
+    settings = RewardSettings.from_dict(config["reward_settings"]) if config.get("reward_settings") else None
+    return CtleReward(
+        specifications=build_specifications(config),
+        weights=settings.weights if settings else None,
+        invalid_penalty=config["invalid_penalty"],
+        success_bonus=config["success_bonus"],
+        efficiency_weight=settings.efficiency_weight if settings else 1.0,
+        margin_weight=settings.margin_weight if settings else config["margin_weight"],
+    )
+
+
 def build_env(config: dict):
     """Build one gym env from plain config so the vec env factory only needs plain data."""
     evaluator = build_evaluator(config)
     if config.get("equalizer"):
         evaluator = EqualizerEvaluator(evaluator)
-    reward = CtleReward(
-        specifications=build_specifications(config),
-        invalid_penalty=config["invalid_penalty"],
-        success_bonus=config["success_bonus"],
-        margin_weight=config["margin_weight"],
-    )
+    reward = build_reward(config)
     environment = CtleEnvironment(
         evaluator,
         reward_model=reward,
@@ -135,6 +149,7 @@ def main() -> None:
         "eye_width_min": args.eye_width_min,
         "hd3": args.hd3,
         "equalizer": args.equalizer,
+        "reward_settings": json.loads(Path(args.reward_settings).read_text(encoding="utf-8")) if args.reward_settings else None,
         "invalid_penalty": args.invalid_penalty,
         "success_bonus": args.success_bonus,
         "margin_weight": args.margin_weight,

@@ -29,8 +29,7 @@ from rl.environment import CtleEnvironment
 from rl.equalizer import EqualizerEvaluator
 from rl.gym_wrapper import make_gym_env
 from rl.pvt import all_pvt_corners
-from rl.reward import CtleReward
-from scripts.train_sac import build_evaluator, build_specifications
+from scripts.train_sac import build_evaluator, build_reward, build_specifications
 from spice.spice_engine import SpiceEvaluator
 
 
@@ -122,12 +121,7 @@ def main() -> None:
         env_evaluator = build_evaluator(config)
         if equalizer:
             env_evaluator = EqualizerEvaluator(env_evaluator)
-        reward = CtleReward(
-            specifications=specifications,
-            invalid_penalty=config["invalid_penalty"],
-            success_bonus=config["success_bonus"],
-            margin_weight=config["margin_weight"],
-        )
+        reward = build_reward(config)
         # Terminate on success so steps_to_feasible is well defined; the
         # policy was trained to hold, so the first feasible step is a fair test.
         environment = CtleEnvironment(
