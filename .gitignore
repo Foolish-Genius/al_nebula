@@ -16,3 +16,4 @@ docs/report/draft.*
 docs/report/*.rendered.html
 docs/report/_preview*.png
 docs/report/report_draft.html
+reports/cmaes*/
