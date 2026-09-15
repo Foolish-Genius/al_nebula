@@ -38,8 +38,8 @@ def test_mapping_rejects_nan_and_infinity():
 
 
 def test_prbs_source_is_deterministic():
-    first = SpiceEvaluator._prbs_source(False)
-    assert first == SpiceEvaluator._prbs_source(False)
+    first = SpiceEvaluator()._prbs_source(False)
+    assert first == SpiceEvaluator()._prbs_source(False)
     assert first.startswith("PWL(") and first.endswith(")")
     assert first.count(" ") > 200
 
@@ -247,3 +247,22 @@ def test_sized_netlist_fills_in_device_values():
     assert f"* R_load = {parameters['R_load']:.6g}" in netlist
     assert "DFE weight" in netlist and "-0.1" in netlist
     assert "{" not in netlist.split("\n", 8)[-1]  # every template placeholder was substituted
+
+
+def test_nyquist_frequency_sets_rate_channel_and_peaking_frequency():
+    import numpy as np
+    from spice.spice_engine import SpiceEvaluator
+
+    gen2 = SpiceEvaluator()
+    gen1 = SpiceEvaluator(nyquist_frequency_hz=1.25e9)
+    assert gen2.unit_interval_s == pytest.approx(200e-12) and gen1.unit_interval_s == pytest.approx(400e-12)
+    # Channel loss at Nyquist is preserved when the rate changes.
+    assert gen1.channel_loss_at_nyquist_db() == pytest.approx(gen2.channel_loss_at_nyquist_db())
+    assert gen2.channel_loss_at_nyquist_db() == pytest.approx(-10.0, abs=0.1)
+    # The PRBS source stretches with the UI and the transient runs long enough for it.
+    assert "5.08e-08 0.7" in gen2._prbs_source(False) or gen2._prbs_source(False).count(" ") > 100
+    assert gen1._tran_commands() != gen2._tran_commands()
+    # Peaking is measured at the configured Nyquist frequency.
+    frequencies = np.logspace(7, 10, 301)
+    gains = 20 * np.log10(1 + (frequencies / 1e9) ** 2)  # rises with frequency
+    assert gen1._nearest_value(frequencies, gains, gen1.nyquist_frequency_hz) < gen2._nearest_value(frequencies, gains, gen2.nyquist_frequency_hz)

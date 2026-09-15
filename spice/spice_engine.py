@@ -74,6 +74,7 @@ class SpiceEvaluator:
         osdi_model_paths: tuple[str | Path, ...] = (),
         eye_height_min_v: float | None = None,
         eye_width_min_ui: float | None = None,
+        nyquist_frequency_hz: float = 2.5e9,
     ) -> None:
         project_root = Path(__file__).resolve().parents[1]
         self.template_path = Path(
@@ -89,6 +90,14 @@ class SpiceEvaluator:
         )
         self.pdk_corner = pdk_corner
         self.osdi_model_paths = tuple(Path(path) for path in osdi_model_paths)
+        # Data rate is 2 x Nyquist: the peaking gate measures at Nyquist, the
+        # PRBS runs at one UI = 1 / (2 f_N), and the channel pole scales so the
+        # loss at Nyquist stays about -10 dB. "Tunable 1.25-2.5 GHz" in the
+        # brief is this parameter.
+        self.nyquist_frequency_hz = float(nyquist_frequency_hz)
+        self.unit_interval_s = 1.0 / (2.0 * self.nyquist_frequency_hz)
+        self.transient_step_s = self.unit_interval_s / 100.0
+        self.channel_pole_hz = self.CHANNEL_POLE_HZ * self.nyquist_frequency_hz / 2.5e9
         # Operating corner for the training gates (.op/.ac, transient, HD3):
         # nominal TT / 1.2 V / 27 C unless set_corner() is called. run_pvt
         # sweeps corners explicitly and does not use this.
@@ -248,7 +257,7 @@ class SpiceEvaluator:
                 nyquist_gain = self._nearest_value(
                     frequencies,
                     gains,
-                    2.5e9,
+                    self.nyquist_frequency_hz,
                 )
 
                 if (
@@ -352,7 +361,7 @@ class SpiceEvaluator:
                 nyquist_gain = self._nearest_value(
                     frequencies,
                     gains,
-                    2.5e9,
+                    self.nyquist_frequency_hz,
                 )
 
                 peaking_boost = nyquist_gain - dc_gain
@@ -470,7 +479,7 @@ class SpiceEvaluator:
                 time_s,
                 output_v,
                 self._prbs_bits(),
-                self.UNIT_INTERVAL_S,
+                self.unit_interval_s,
                 periods=self.PRBS_PERIODS,
             )
 
@@ -709,7 +718,7 @@ class SpiceEvaluator:
         """
         try:
             sample_times, samples, bits = self._aligned_symbol_samples(
-                time_s, output_v, self._prbs_bits(), self.UNIT_INTERVAL_S, self.PRBS_PERIODS, 0.5 if sample_phase is None else sample_phase
+                time_s, output_v, self._prbs_bits(), self.unit_interval_s, self.PRBS_PERIODS, 0.5 if sample_phase is None else sample_phase
             )
         except ValueError:
             return {"dfe_tap": 0.0 if tap is None else float(tap), "dfe_eye_height_v": 0.0, "dfe_bit_errors": None, "dfe_output_v": np.array([]), "dfe_time_s": np.array([]), "dfe_valid": False}
@@ -948,18 +957,16 @@ class SpiceEvaluator:
             ".endc\n"
         )
 
-    @staticmethod
-    def _tran_commands() -> str:
+    def _tran_commands(self) -> str:
         return (
             "\n.control\n"
-            f"tran {SpiceEvaluator.TRANSIENT_STEP_S:.12g} "
-            f"{SpiceEvaluator.PRBS_PERIODS * 127 * SpiceEvaluator.UNIT_INTERVAL_S:.12g}\n"
+            f"tran {self.transient_step_s:.12g} "
+            f"{self.PRBS_PERIODS * 127 * self.unit_interval_s:.12g}\n"
             "print time v(outP) v(outN)\n"
             ".endc\n"
         )
 
-    @classmethod
-    def _channel_block(cls, lossy: bool) -> str:
+    def _channel_block(self, lossy: bool) -> str:
         """Return the netlist lines connecting txP/txN to inP/inN."""
         if not lossy:
             return "RchP txP inP 1m\nRchN txN inN 1m"
@@ -967,19 +974,22 @@ class SpiceEvaluator:
         lines = []
         for side in ("P", "N"):
             previous = f"tx{side}"
-            for stage, ohms in enumerate(cls.CHANNEL_SECTION_OHMS, start=1):
-                node = f"in{side}" if stage == len(cls.CHANNEL_SECTION_OHMS) else f"ch{side}{stage}"
-                farads = 1.0 / (2.0 * np.pi * cls.CHANNEL_POLE_HZ * ohms)
+            for stage, ohms in enumerate(self.CHANNEL_SECTION_OHMS, start=1):
+                node = f"in{side}" if stage == len(self.CHANNEL_SECTION_OHMS) else f"ch{side}{stage}"
+                farads = 1.0 / (2.0 * np.pi * self.channel_pole_hz * ohms)
                 lines.append(f"Rch{side}{stage} {previous} {node} {ohms:.12g}")
                 lines.append(f"Cch{side}{stage} {node} 0 {farads:.12g}")
                 previous = node
         return "\n".join(lines)
 
     @classmethod
-    def channel_loss_db(cls, frequency_hz: float) -> float:
+    def channel_loss_db(cls, frequency_hz: float, pole_hz: float | None = None) -> float:
         """Nominal insertion loss of the transient channel (ignores section loading)."""
-        ratio = frequency_hz / cls.CHANNEL_POLE_HZ
+        ratio = frequency_hz / (cls.CHANNEL_POLE_HZ if pole_hz is None else pole_hz)
         return float(-20.0 * len(cls.CHANNEL_SECTION_OHMS) * np.log10(np.sqrt(1.0 + ratio * ratio)))
+
+    def channel_loss_at_nyquist_db(self) -> float:
+        return self.channel_loss_db(self.nyquist_frequency_hz, self.channel_pole_hz)
 
     @staticmethod
     def _hd3_commands() -> str:
@@ -1029,13 +1039,12 @@ class SpiceEvaluator:
             register = ((register << 1) | feedback) & 0x7F
         return bits
 
-    @classmethod
-    def _prbs_source(cls, invert: bool) -> str:
-        """Return a deterministic PRBS7 PWL source at 5 Gbps, repeated PRBS_PERIODS times."""
-        bit_period = cls.UNIT_INTERVAL_S
+    def _prbs_source(self, invert: bool) -> str:
+        """Return a deterministic PRBS7 PWL source at 2 x Nyquist, repeated PRBS_PERIODS times."""
+        bit_period = self.unit_interval_s
         points: list[str] = []
 
-        for index, bit in enumerate(np.tile(cls._prbs_bits(), cls.PRBS_PERIODS)):
+        for index, bit in enumerate(np.tile(self._prbs_bits(), self.PRBS_PERIODS)):
             level = 0.5 + (0.2 if bit else 0.0)
 
             if invert:

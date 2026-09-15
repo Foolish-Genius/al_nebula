@@ -61,7 +61,7 @@ def main(
         "noise_pass": bool(noise_result["noise_valid"] and noise_result["noise_vrms"] < 1.5e-3),
         **area_result,
         "eye_center_ui": transient_result.get("eye_center_ui"),
-        "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
+        "channel_loss_db_at_nyquist": evaluator.channel_loss_at_nyquist_db(),
         "transient_error": transient_result.get("error"),
         "model_source": evaluator.model_source,
         "selected_action": action.tolist(),

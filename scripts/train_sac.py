@@ -59,6 +59,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eye-height-min", type=float, default=None, help="eye height spec in V (default: CtleSpecifications)")
     parser.add_argument("--eye-width-min", type=float, default=None, help="eye width spec in UI (default: CtleSpecifications)")
     parser.add_argument("--hd3", action="store_true", help="enforce the HD3 spec: run the linearity gate once the other specs pass")
+    parser.add_argument(
+        "--spec",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="override a CtleSpecifications field, e.g. --spec nyquist_frequency_hz=1.25e9 --spec power_max_w=15e-3 --spec peaking_min_db=4",
+    )
     parser.add_argument("--equalizer", action="store_true", help="size the whole equalizer: five CTLE values plus the one-tap DFE weight")
     parser.add_argument(
         "--corners",
@@ -86,6 +93,11 @@ def build_specifications(config: dict) -> CtleSpecifications:
         for key, name in (("eye_vertical_min_v", "eye_height_min"), ("eye_horizontal_min_ui", "eye_width_min"))
         if config.get(name) is not None
     }
+    for item in config.get("spec") or []:
+        name, _, value = str(item).partition("=")
+        if name not in CtleSpecifications.__dataclass_fields__ or name in ("constraints", "enforce_hd3"):
+            raise ValueError(f"unknown specification field: {name}")
+        overrides[name] = float(value)
     return CtleSpecifications(enforce_hd3=bool(config.get("hd3")), **overrides)
 
 
@@ -98,6 +110,7 @@ def build_evaluator(config: dict) -> SpiceEvaluator:
         pdk_root=config.get("pdk_root"),
         eye_height_min_v=specs.eye_vertical_min_v,
         eye_width_min_ui=specs.eye_horizontal_min_ui,
+        nyquist_frequency_hz=specs.nyquist_frequency_hz,
     )
 
 
@@ -164,6 +177,7 @@ def main() -> None:
         "eye_height_min": args.eye_height_min,
         "eye_width_min": args.eye_width_min,
         "hd3": args.hd3,
+        "spec": args.spec,
         "equalizer": args.equalizer,
         "corners": args.corners,
         "resume": args.resume,
@@ -276,7 +290,7 @@ def main() -> None:
         "eye_height_v": transient_result["eye_height_v"],
         "eye_width_ui": transient_result["eye_width_ui"],
         "eye_center_ui": transient_result["eye_center_ui"],
-        "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
+        "channel_loss_db_at_nyquist": evaluator.channel_loss_at_nyquist_db(),
         "hd3_db": linearity_result["hd3_db"],
         "hd3_pass": bool(linearity_result["linearity_valid"] and linearity_result["hd3_db"] < specifications.hd3_max_db),
         "hd3_enforced": args.hd3,
@@ -295,6 +309,8 @@ def main() -> None:
         "margin_weight": args.margin_weight,
         "eye_height_min_v": specifications.eye_vertical_min_v,
         "eye_width_min_ui": specifications.eye_horizontal_min_ui,
+        "nyquist_frequency_hz": specifications.nyquist_frequency_hz,
+        "data_rate_gbps": 2.0 * specifications.nyquist_frequency_hz / 1e9,
         "best_training_reward": best.best_reward,
         "selected_action": best.best_design.tolist(),
         "parameters": (EqualizerEvaluator(evaluator) if args.equalizer else evaluator).map_actions(best.best_design),
