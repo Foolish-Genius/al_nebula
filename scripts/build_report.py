@@ -37,7 +37,14 @@ def inline(template: str) -> str:
         return f"data:{mime};base64,{data}"
 
     def include(match: re.Match) -> str:
-        return html.escape((ROOT / match.group(1)).read_text(encoding="utf-8"))
+        path, _, limit = match.group(1).partition("|")
+        text = (ROOT / path).read_text(encoding="utf-8")
+        if limit:
+            lines = text.splitlines()
+            text = "
+".join(lines[: int(limit)]) + (f"
+... ({len(lines) - int(limit)} more lines in {path})" if len(lines) > int(limit) else "")
+        return html.escape(text)
 
     rendered = re.sub(r"\{\{fig:([^}]+)\}\}", figure, template)
     return re.sub(r"\{\{include:([^}]+)\}\}", include, rendered)
