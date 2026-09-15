@@ -17,7 +17,7 @@ curriculum policy's best design (`reports/eval-ihp-pvt/`) unless noted.
 | Brief specification | Ours (reward target) | Result | Status |
 |---|---|---|---|
 | Nyquist 2.5 GHz (PCIe Gen 2, 5.0 Gbps) | 2.5 GHz, 5 Gbps PRBS7 | measured at 2.5 GHz | pass |
-| HF peaking boost 3-12 dB, tunable 1.25-2.5 GHz | 3-12 dB at the configured Nyquist frequency | 4.5 dB at 2.5 GHz; `--spec nyquist_frequency_hz=1.25e9` retunes the data rate, channel and measurement (Section "Tunable Nyquist frequency") | pass |
+| HF peaking boost 3-12 dB, tunable 1.25-2.5 GHz | 3-12 dB at the configured Nyquist frequency | 4.5 dB at 2.5 GHz; `--spec nyquist_frequency_hz=1.25e9` retunes the data rate, channel and measurement; retuned policy 20/20, 5.23 dB at 1.25 GHz (Section "Tunable Nyquist frequency") | pass |
 | 1-stage CTLE with source degeneration (variable Rs, Cs) | Rs 10-500 ohm, Cs 1 fF-1 pF in the action | yes | pass |
 | 1-tap DFE; NRZ signalling | behavioural one-tap DFE, tap swept or RL-sized; NRZ PRBS7 | tap +0.062 opens 0.325 V to 0.355 V (equalizer run) | pass (behavioural) |
 | HD3 < -30 dB (100 MHz differential input) | <= -30 dB, enforced in the reward | -61.9 dB | pass |
@@ -147,6 +147,7 @@ designs (no exploration noise), then PVT / HD3 validation of the best design.
 | `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 95.6% | 20 / 20 | 2.5 / 4 | 0.335 V, 1.24 mW, -58.1 dB, 45/45 |
 | `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.4% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
 | `sac-ihp-eq` (seed 1) | 8k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | 92.3% | 20 / 20 | 3 / 5 | 0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, -71.6 dB, 45/45 |
+| `sac-ihp-gen1` (retune) | +3k | resumed from `sac-ihp-v1` with `--spec nyquist_frequency_hz=1.25e9` (PCIe Gen 1, 2.5 Gbps) | 96.5% | 20 / 20 | 2 / 5 | 5.23 dB peaking at 1.25 GHz, 0.350 V, 1.28 mW, -70.9 dB, 45/45 |
 
 ### Baselines: random search and CMA-ES
 
@@ -217,6 +218,24 @@ UI-centre samples, slicer at the midpoint of the two symbol populations,
 DFE fed its own decisions, bit errors counted, zero eye on any error). With
 the honest metric a one-tap DFE still helps: the CTLE-only policy design
 goes from 0.327 V to 0.455 V at tap +0.075 with no errors. Trained on the corrected metric for 8k steps, the six-value policy holds 91-93% of steps feasible with a median post-DFE eye of 0.51 V (CTLE-only runs hold about 0.35 V), i.e. it learns to spend the tap on margin. In deterministic rollouts 20 of 20 reach feasibility, median 3 steps, worst 5; the best rollout design has a raw eye of 0.325 V that the agent's tap of +0.062 opens to 0.355 V with no bit errors, at 1.36 mW, HD3 -71.6 dB and 45/45 corners. The earlier run on the flawed metric is kept as `reports/sac-ihp-eq-flawed-metric/` for the record. Artifacts: `reports/sac-ihp-eq/`, `reports/eval-ihp-eq/`.
+
+### Tunable Nyquist frequency (1.25-2.5 GHz)
+
+The brief asks for peaking tunable between 1.25 and 2.5 GHz. The Nyquist
+frequency is a specification input (`--spec nyquist_frequency_hz=...`): it
+sets the frequency at which peaking is measured, the data rate and unit
+interval of the PRBS transient (2 x Nyquist), the transient step, and the
+channel pole, so the channel keeps about -10 dB of loss at the new Nyquist.
+The 2.5 GHz policy's design peaks only 2.87 dB at 1.25 GHz - it fails the
+spec at the lower rate - so tunability has to be shown, not asserted. Resuming
+the seed-1 policy with the spec set to 1.25 GHz (PCIe Gen 1, 2.5 Gbps) for
+3k steps: 93.5% of steps feasible in the first 1k (the policy transfers) and
+96.5% by 3k; in evaluation 20 of 20 rollouts reach feasibility, median 2
+steps, worst 5, and the best design peaks 5.23 dB at 1.25 GHz with a
+0.350 V / 0.94 UI eye at 2.5 Gbps, 1.28 mW, HD3 -70.9 dB and 45/45 corners.
+The retuned sizing moves the degeneration zero down in frequency (R_s 365 ohm,
+C_s 503 fF against 182 ohm, 522 fF at 2.5 GHz). Artifacts:
+`reports/sac-ihp-gen1/`, `reports/eval-ihp-gen1/`.
 
 ### LLM frontend for the reward
 

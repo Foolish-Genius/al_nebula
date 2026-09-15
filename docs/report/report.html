@@ -95,7 +95,7 @@ design unless noted.</p>
 <table>
 <tr><th>Brief specification</th><th>Ours (reward target)</th><th>Result</th><th>Status</th></tr>
 <tr><td>Nyquist 2.5 GHz (PCIe Gen 2, 5.0 Gbps)</td><td>2.5 GHz, 5 Gbps PRBS7</td><td>measured at 2.5 GHz</td><td class="pass">pass</td></tr>
-<tr><td>HF peaking boost 3&ndash;12 dB, tunable 1.25&ndash;2.5 GHz</td><td>3&ndash;12 dB at the configured Nyquist frequency</td><td>4.5 dB at 2.5 GHz; <code>--spec nyquist_frequency_hz=1.25e9</code> retunes rate, channel and measurement (Section 7.3)</td><td class="pass">pass</td></tr>
+<tr><td>HF peaking boost 3&ndash;12 dB, tunable 1.25&ndash;2.5 GHz</td><td>3&ndash;12 dB at the configured Nyquist frequency</td><td>4.5 dB at 2.5 GHz; <code>--spec nyquist_frequency_hz=1.25e9</code> retunes rate, channel and measurement; retuned policy 20/20, 5.23 dB at 1.25 GHz (Section 7.3)</td><td class="pass">pass</td></tr>
 <tr><td>1-stage CTLE with source degeneration (variable R<sub>s</sub>, C<sub>s</sub>)</td><td>R<sub>s</sub> 10&ndash;500 &Omega;, C<sub>s</sub> 1 fF&ndash;1 pF in the action</td><td>yes</td><td class="pass">pass</td></tr>
 <tr><td>1-tap DFE; NRZ signalling</td><td>behavioural one-tap DFE, tap swept or RL-sized; NRZ PRBS7</td><td>tap +0.062 opens 0.325 V to 0.355 V (equalizer run)</td><td class="pass">pass (behavioural)</td></tr>
 <tr><td>HD3 &lt; &minus;30 dB (100 MHz differential input)</td><td>&le; &minus;30 dB, enforced in the reward</td><td>&minus;61.9 dB</td><td class="pass">pass</td></tr>
@@ -310,6 +310,7 @@ starting designs, then validates the best design with the full gate set and all 
 <tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">95.6%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.335 V, 1.24 mW, &minus;58.1 dB, 45/45</td></tr>
 <tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.4%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
 <tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">92.3%</td><td class="num">20 / 20</td><td>3 / 5</td><td>0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, &minus;71.6 dB, 45/45</td></tr>
+<tr><td>sac-ihp-gen1 (retune)</td><td class="num">+3k</td><td>resumed from sac-ihp-v1 with <code>--spec nyquist_frequency_hz=1.25e9</code> (PCIe Gen 1, 2.5 Gbps)</td><td class="num">96.5%</td><td class="num">20 / 20</td><td>2 / 5</td><td>5.23 dB at 1.25 GHz, 0.350 V, 1.28 mW, &minus;70.9 dB, 45/45</td></tr>
 </table>
 <p class="small">Table 4. Training runs on the IHP sg13g2 PSP103 models. Every best design passes peaking, power, eye height and width, HD3, noise and all 45 corners.</p>
 
@@ -365,6 +366,17 @@ simulation steps, worst four; the best design passes all 45 corners with HD3 at 
 <p><code>--equalizer</code> extends the action to six values: the five CTLE parameters and the one-tap DFE weight in
 [&minus;0.5, 0.5]. The DFE is applied to the CTLE's post-channel UI-centre samples whenever a waveform exists, and the
 post-DFE eye height drives the reward. Trained on the corrected metric for 8k steps, the six-value policy holds 91-93% of steps feasible with a median post-DFE eye of 0.51 V (CTLE-only runs hold about 0.35 V), i.e. it learns to spend the tap on margin. In deterministic rollouts 20 of 20 reach feasibility, median 3 steps, worst 5; the best rollout design has a raw eye of 0.325 V that the agent's tap of +0.062 opens to 0.355 V with no bit errors, at 1.36 mW, HD3 &minus;71.6 dB and 45/45 corners. The earlier run on the flawed metric is kept as reports/sac-ihp-eq-flawed-metric/ for the record. Artifacts: reports/sac-ihp-eq/, reports/eval-ihp-eq/.</p>
+
+<h3>7.3 Tunable Nyquist frequency (1.25&ndash;2.5 GHz)</h3>
+<p>The brief asks for peaking tunable between 1.25 and 2.5 GHz. The Nyquist frequency is a specification input
+(<code>--spec nyquist_frequency_hz=...</code>): it sets the frequency at which peaking is measured, the data rate and unit
+interval of the PRBS transient (2 &times; Nyquist), the transient step, and the channel pole, so the channel keeps about
+&minus;10 dB of loss at the new Nyquist. The 2.5 GHz policy's design peaks only 2.87 dB at 1.25 GHz &mdash; it fails the spec at
+the lower rate &mdash; so tunability has to be shown, not asserted. Resuming the seed-1 policy with the spec set to 1.25 GHz
+(PCIe Gen 1, 2.5 Gbps) for 3k steps: 93.5% of steps feasible in the first 1k (the policy transfers) and 96.5% by 3k; in
+evaluation 20 of 20 rollouts reach feasibility, median 2 steps, worst 5, and the best design peaks 5.23 dB at 1.25 GHz
+with a 0.350 V / 0.94 UI eye at 2.5 Gbps, 1.28 mW, HD3 &minus;70.9 dB and 45/45 corners. The retuned sizing moves the
+degeneration zero down in frequency (R<sub>s</sub> 365 &Omega;, C<sub>s</sub> 503 fF against 182 &Omega;, 522 fF at 2.5 GHz).</p>
 
 <h2>8. LLM frontend for the reward</h2>
 <p><code>scripts/reward_from_feedback.py</code> turns an engineer's sentence into the reward's per-specification weights,
@@ -453,8 +465,8 @@ device-level knob; corner-aware observations; Bayesian-optimisation and CMA-ES b
 wall-clock comparison against a manual sweep; a closed LLM loop that reads each validation report and proposes the next
 reward adjustment; and, if a future round requires it, the sky130 backend.</p>
 
-<h2>Appendix A. Sized netlist of the curriculum policy's best design</h2>
-<pre style="font-size:7.8pt;line-height:1.25">{{include:reports/eval-ihp-pvt/sized_ctle.sp}}</pre>
+<h2>Appendix A. Sized netlist of the curriculum policy's best design (excerpt)</h2>
+<pre style="font-size:7.8pt;line-height:1.25">{{include:reports/eval-ihp-pvt/sized_ctle.sp|30}}</pre>
 
 <h2>Appendix B. Training configuration</h2>
 <table>
