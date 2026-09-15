@@ -240,6 +240,52 @@ def test_equalizer_action_controls_ctle_and_dfe_tap():
     assert result["equalizer_tap"] == pytest.approx(0.0)
 
 
+def test_equalizer_applies_dfe_even_when_raw_eye_fails_and_maps_parameters():
+    class ClosedEyeSpice:
+        def run_simulation(self, action):
+            return {"dc_valid": True, "peaking_boost": 6.0, "power": 1e-3}
+
+        def run_transient(self, action):
+            time = np.arange(0.0, 4.0e-9, 200e-12)
+            # Alternating bits with heavy post-cursor ISI: raw eye fails acceptance.
+            values = np.tile([-0.1, 0.1], 10)[:time.size]
+            return {"tran_valid": False, "eye_height_v": 0.05, "eye_width_ui": 0.3, "time_s": time, "output_v": values}
+
+        def map_actions(self, action):
+            return {name: float(i) for i, name in enumerate(("W_in", "R_load", "I_bias", "R_s", "C_s"))}
+
+    evaluator = EqualizerEvaluator(ClosedEyeSpice())
+    result = evaluator.run(np.array([0, 0, 0, 0, 0, 1.0]))
+    assert result["equalizer_valid"] is True
+    assert result["dfe_tap"] == pytest.approx(0.5)
+    assert np.isfinite(result["dfe_eye_height_v"])
+    assert evaluator.map_actions(np.array([0, 0, 0, 0, 0, -1.0]))["dfe_tap"] == pytest.approx(-0.5)
+
+    # A DC failure short-circuits before the transient.
+    class DeadSpice(ClosedEyeSpice):
+        def run_simulation(self, action):
+            return {"dc_valid": False}
+
+        def run_transient(self, action):
+            raise AssertionError("transient must not run on a DC failure")
+
+    assert EqualizerEvaluator(DeadSpice()).run(np.zeros(6))["equalizer_valid"] is False
+
+
+def test_environment_equalizer_path_feeds_dfe_eye_to_reward_and_gym_action_space():
+    class Whole:
+        def run(self, action):
+            return {"dc_valid": True, "peaking_boost": 6.0, "power": 1e-3, "eye_height_v": 0.1, "eye_width_ui": 0.8, "dfe_eye_height_v": 0.6}
+
+    environment = CtleEnvironment(Whole())
+    assert environment.action_size == 6
+    _, reward, terminated, _, info = environment.step(np.zeros(6))
+    assert info["metrics"]["eye_vertical_v"] == 0.6  # DFE eye, not the raw 0.1 V
+    assert info["all_specs_met"] is True and terminated is True
+    gym_env = make_gym_env(CtleEnvironment(Whole()))
+    assert gym_env.action_space.shape == (6,)
+
+
 def test_environment_uses_six_action_whole_equalizer():
     class Whole:
         def run(self, action):

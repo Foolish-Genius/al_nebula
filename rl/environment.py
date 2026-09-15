@@ -110,9 +110,13 @@ class CtleEnvironment:
     def _simulate(self, design: np.ndarray) -> dict[str, Any]:
         if self.whole_equalizer is not None:
             metrics = dict(self.whole_equalizer(design))
-            if metrics.get("tran_valid", False):
+            if metrics.get("dc_valid", False):
                 metrics["eye_vertical_v"] = metrics.get("dfe_eye_height_v", metrics.get("eye_height_v", np.nan))
                 metrics["eye_horizontal_ui"] = metrics.get("eye_width_ui", np.nan)
+                if self.run_linearity and self._others_pass(metrics, except_name="hd3"):
+                    linearity = self.evaluator.run_linearity(design)
+                    metrics["hd3_db"] = linearity.get("hd3_db", np.nan)
+                    metrics["linearity_error"] = linearity.get("error")
             return metrics
         metrics = dict(self.evaluator.run_simulation(design))
         if not self.run_transient or not bool(metrics.get("dc_valid", False)):
