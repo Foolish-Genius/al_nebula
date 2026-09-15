@@ -487,6 +487,33 @@ class SpiceEvaluator:
             failure["error"] = str(error)
             return failure
 
+    HD3_TONE_HZ = 100e6
+    HD3_ANALYSIS_CYCLES = 3
+
+    @classmethod
+    def hd3_from_waveform(cls, time_s: np.ndarray, output_v: np.ndarray) -> float:
+        """HD3 in dB from the settled tail of a single-tone transient.
+
+        The analysis window is an integer number of tone periods with a Hann
+        taper, so the fundamental and its third harmonic land on FFT bins and
+        the fundamental's leakage cannot masquerade as distortion. (A 2.5-cycle
+        rectangular window put a false floor of about -25 dB on every design.)
+        """
+        period = 1.0 / cls.HD3_TONE_HZ
+        window_s = cls.HD3_ANALYSIS_CYCLES * period
+        keep = time_s >= time_s.max() - window_s
+        if np.count_nonzero(keep) < 8 or time_s.max() - time_s.min() <= window_s:
+            raise ValueError("HD3 transient is shorter than the analysis window")
+        samples = 1 + 2 ** 14
+        sample_time = np.linspace(time_s.max() - window_s, time_s.max(), samples)
+        values = np.interp(sample_time, time_s[keep], output_v[keep])
+        values = (values - np.mean(values)) * np.hanning(samples)
+        spectrum = np.abs(np.fft.rfft(values))
+        frequencies = np.fft.rfftfreq(samples, sample_time[1] - sample_time[0])
+        fundamental = spectrum[np.argmin(abs(frequencies - cls.HD3_TONE_HZ))]
+        third = spectrum[np.argmin(abs(frequencies - 3.0 * cls.HD3_TONE_HZ))]
+        return float(20.0 * np.log10(max(third, 1e-30) / max(fundamental, 1e-30)))
+
     def run_linearity(self, actions: np.ndarray) -> dict[str, Any]:
         """Measure third-harmonic distortion for a 100 MHz differential input."""
         result = {"hd3_db": float("nan"), "linearity_valid": False, "error": None}
@@ -496,15 +523,7 @@ class SpiceEvaluator:
             with tempfile.TemporaryDirectory(prefix="autoanalog-hd3-") as directory:
                 output = self._run_ngspice(self._with_commands(netlist, self._hd3_commands()), Path(directory) / "hd3")
             time_s, output_v = self._parse_transient(output)
-            keep = time_s >= time_s.min() + 0.5 * (time_s.max() - time_s.min())
-            sample_time = np.linspace(time_s[keep].min(), time_s[keep].max(), 5001)
-            values = np.interp(sample_time, time_s[keep], output_v[keep])
-            values -= np.mean(values)
-            spectrum = np.abs(np.fft.rfft(values))
-            frequencies = np.fft.rfftfreq(values.size, sample_time[1] - sample_time[0])
-            fundamental = spectrum[np.argmin(abs(frequencies - 100e6))]
-            third = spectrum[np.argmin(abs(frequencies - 300e6))]
-            hd3 = float(20.0 * np.log10(max(third, 1e-30) / max(fundamental, 1e-30)))
+            hd3 = self.hd3_from_waveform(time_s, output_v)
             return {"hd3_db": hd3, "linearity_valid": bool(np.isfinite(hd3)), "error": None}
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             result["error"] = str(error)
