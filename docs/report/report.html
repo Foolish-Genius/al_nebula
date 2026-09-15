@@ -282,7 +282,7 @@ starting designs, then validates the best design with the full gate set and all 
 <tr><td>sac-ihp-v1-s2 (seed 2)</td><td class="num">12k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>3 / 4</td><td>0.316 V, 1.22 mW, &minus;57.7 dB, 45/45</td></tr>
 <tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">96.2%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.344 V, 1.01 mW, &minus;68.2 dB, 45/45</td></tr>
 <tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.2%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
-<tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">{{EQ_TRAIN}}</td><td class="num">{{EQ_ROLLOUTS}}</td><td>{{EQ_STEPS}}</td><td>{{EQ_DESIGN}}</td></tr>
+<tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">92.2%</td><td class="num">20 / 20</td><td>3 / 5</td><td>0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, &minus;71.6 dB, 45/45</td></tr>
 </table>
 <p class="small">Table 4. Training runs on the IHP sg13g2 PSP103 models. Every best design passes peaking, power, eye height and width, HD3, noise and all 45 corners.</p>
 
@@ -322,7 +322,7 @@ simulation steps, worst four; the best design passes all 45 corners with HD3 at 
 <h3>7.2 Whole-equalizer sizing (CTLE + DFE tap)</h3>
 <p><code>--equalizer</code> extends the action to six values: the five CTLE parameters and the one-tap DFE weight in
 [&minus;0.5, 0.5]. The DFE is applied to the CTLE's post-channel UI-centre samples whenever a waveform exists, and the
-post-DFE eye height drives the reward. {{EQ_TEXT}}</p>
+post-DFE eye height drives the reward. Trained on the corrected metric for 8k steps, the six-value policy holds 91-93% of steps feasible with a median post-DFE eye of 0.51 V (CTLE-only runs hold about 0.35 V), i.e. it learns to spend the tap on margin. In deterministic rollouts 20 of 20 reach feasibility, median 3 steps, worst 5; the best rollout design has a raw eye of 0.325 V that the agent's tap of +0.062 opens to 0.355 V with no bit errors, at 1.36 mW, HD3 &minus;71.6 dB and 45/45 corners. The earlier run on the flawed metric is kept as reports/sac-ihp-eq-flawed-metric/ for the record. Artifacts: reports/sac-ihp-eq/, reports/eval-ihp-eq/.</p>
 
 <h2>8. LLM frontend for the reward</h2>
 <p><code>scripts/reward_from_feedback.py</code> turns an engineer's sentence into the reward's per-specification weights,
