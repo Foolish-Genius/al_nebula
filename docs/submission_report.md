@@ -45,6 +45,32 @@ The latest real-IHP run is stored in `reports/runs/2026-09-11-ihp-complete2/`.
 
 The noise result is integrated from the ngspice `inoise_spectrum` vector using the RMS density equation. The raw output and report remain available for independent review.
 
+## RL Result on the IHP Models
+
+SAC (`scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --n-envs 8
+--hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10`,
+30k steps, seed 1) converged within 5k steps: from 5k on, 95% of environment
+steps satisfied every enforced spec. Deterministic rollouts of the final
+policy (`scripts/evaluate_policy.py`, 20 random starting designs) against a
+3000-design random search on the same models and reward:
+
+| | SAC policy | Random search |
+|---|---:|---:|
+| Rollouts reaching a fully feasible design | 20 / 20 | - |
+| Simulation steps to feasibility | median 2, worst 4 | first hit at design 27 |
+| Feasible fraction of simulated designs | 41% | 7.9% (238 / 3000) |
+| Best reward at equal budget (49 designs) | 20.68 | 19.65 |
+
+Best policy design (validated on IHP): peaking 4.23 dB, eye 0.327 V / 0.88 UI
+after the -10 dB channel, 1.22 mW, 45/45 PVT corners, HD3 -26.1 dB (fails
+the -30 dB target; HD3 was not enforced in this run). Artifacts:
+`reports/sac-ihp-v1/`, `reports/eval-ihp-v1/`, `reports/baseline-ihp-3000/`.
+
+The eye-height target for IHP training is 0.25 V rather than the 0.5 V used
+with the Level-1 model: none of 400 random PSP103 designs reaches 0.5 V, and
+0.25 V keeps the same ~10% random feasibility the Level-1 targets were
+calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
+
 ## What Is Implemented
 
 - IHP sg13g2 PSP103 OSDI model compilation through OpenVAF.
@@ -70,11 +96,10 @@ The noise result is integrated from the ngspice `inoise_spectrum` vector using t
 5. SAC on the generic Level-1 model is solved: with the margin bonus and
    hold-on-success episodes the policy reaches a fully feasible design from a
    random start in a median of 2.5 steps (20/20 rollouts), and its best design
-   passes 45/45 PVT corners. Training on the IHP PSP103 models (Windows
-   ngspice 47 + OpenVAF OSDI) is running with the eye-height target at 0.25 V,
-   since PSP103 devices cannot reach the 0.5 V that was calibrated on Level-1.
+   passes 45/45 PVT corners. The same holds on the IHP PSP103 models (median
+   2 steps, 20/20 rollouts, 45/45 PVT; see "RL Result on the IHP Models").
    HD3 can now be enforced in the reward (`--hd3`) but has not yet been
-   trained against.
+   trained against, so the RL designs still fail it.
 
 ## Submission Position
 
