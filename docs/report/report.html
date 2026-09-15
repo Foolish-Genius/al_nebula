@@ -307,6 +307,7 @@ starting designs, then validates the best design with the full gate set and all 
 <tr><th>Run</th><th class="num">Steps</th><th>Variant</th><th class="num">Training feasible</th><th class="num">Rollouts feasible</th><th>Steps to feasible (median / worst)</th><th>Best design: eye, power, HD3, PVT</th></tr>
 <tr><td>sac-ihp-v1 (seed 1)</td><td class="num">30k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>2 / 4</td><td>0.327 V, 1.22 mW, &minus;57.8 dB, 45/45</td></tr>
 <tr><td>sac-ihp-v1-s2 (seed 2)</td><td class="num">12k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>3 / 4</td><td>0.316 V, 1.22 mW, &minus;57.7 dB, 45/45</td></tr>
+<tr><td>sac-ihp-v1-s3 (seed 3)</td><td class="num">12k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.348 V, 1.33 mW, &minus;60.2 dB, 45/45</td></tr>
 <tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">95.6%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.335 V, 1.24 mW, &minus;58.1 dB, 45/45</td></tr>
 <tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.4%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
 <tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">92.3%</td><td class="num">20 / 20</td><td>3 / 5</td><td>0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, &minus;71.6 dB, 45/45</td></tr>
@@ -319,6 +320,7 @@ starting designs, then validates the best design with the full gate set and all 
 <figcaption>Figure 3. Learning curves for the IHP runs (500-step moving average): reward per step, fraction of steps meeting every specification, and post-channel eye height against the 0.25 V target. All runs converge within about 2k steps; the curriculum stage starts converged because it resumes the nominal policy.</figcaption>
 </figure>
 
+<p>Over the three seeds of the base configuration: 60 of 60 rollouts feasible, mean steps to a feasible design 2.53 &plusmn; 0.06, best-design eye 0.330 &plusmn; 0.014 V, power 1.26 &plusmn; 0.05 mW, HD3 &minus;58.6 &plusmn; 1.2 dB, best reward 20.70 &plusmn; 0.04 (mean &plusmn; std over seeds).</p>
 <h3>6.1 Baselines: random search and CMA-ES</h3>
 <p>Two baselines run against the same models and reward. Random search (<code>scripts/baseline_random.py</code>, 3000
 designs): 7.9% of designs satisfy every specification (238/3000) and the first feasible one is design 27. CMA-ES
@@ -327,7 +329,7 @@ designs): 7.9% of designs satisfy every specification (238/3000) and the first f
 how the policy is rolled out (Table 5, Figure 4).</p>
 <table>
 <tr><th>Method (from random starting designs unless noted)</th><th class="num">First feasible design, median / worst</th><th class="num">Best reward at 50 sims</th><th>Cost per new instance</th></tr>
-<tr><td>SAC policy, deterministic rollouts (104 rollouts over 5 evaluations)</td><td class="num"><b>2&ndash;3 / 5</b></td><td class="num">20.5&ndash;20.8</td><td>2&ndash;3 simulations, no search</td></tr>
+<tr><td>SAC policy, deterministic rollouts (144 rollouts over 7 evaluations)</td><td class="num"><b>2&ndash;3 / 5</b></td><td class="num">20.5&ndash;20.8</td><td>2&ndash;3 simulations, no search</td></tr>
 <tr><td>CMA-ES, random start (6 trials)</td><td class="num">9 / 24</td><td class="num">20.50 (mean)</td><td>~10 simulations to feasible; 400 to refine</td></tr>
 <tr><td>CMA-ES from the box centre (3 trials)</td><td class="num">2&ndash;5</td><td class="num">20.8&ndash;21.1; 21.3&ndash;21.4 at 400</td><td>400 simulations per design</td></tr>
 <tr><td>Random search</td><td class="num">27</td><td class="num">19.65</td><td>~13 simulations per feasible design</td></tr>

@@ -144,10 +144,13 @@ designs (no exploration noise), then PVT / HD3 validation of the best design.
 |---|---:|---|---:|---:|---|---|
 | `sac-ihp-v1` (seed 1) | 30k | - | 95.5% | 20 / 20 | 2 / 4 | 0.327 V, 1.22 mW, -57.8 dB, 45/45 |
 | `sac-ihp-v1-s2` (seed 2) | 12k | - | 95.5% | 20 / 20 | 3 / 4 | 0.316 V, 1.22 mW, -57.7 dB, 45/45 |
+| `sac-ihp-v1-s3` (seed 3) | 12k | - | 95.5% | 20 / 20 | 2.5 / 4 | 0.348 V, 1.33 mW, -60.2 dB, 45/45 |
 | `sac-ihp-hd3` (seed 1) | 12k | HD3 enforced in the reward | 95.6% | 20 / 20 | 2.5 / 4 | 0.335 V, 1.24 mW, -58.1 dB, 45/45 |
 | `sac-ihp-pvt` (stage 2) | +8k | resumed from `sac-ihp-hd3`; every episode at a random one of the 45 PVT corners; HD3 enforced | 95.4% | 24 / 24 at random corners | 2 / 4 | 0.370 V, 1.12 mW, -61.9 dB, 45/45 |
 | `sac-ihp-eq` (seed 1) | 8k | six-value action: CTLE plus the one-tap DFE weight; post-DFE eye drives the reward | 92.3% | 20 / 20 | 3 / 5 | 0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, -71.6 dB, 45/45 |
 | `sac-ihp-gen1` (retune) | +3k | resumed from `sac-ihp-v1` with `--spec nyquist_frequency_hz=1.25e9` (PCIe Gen 1, 2.5 Gbps) | 96.5% | 20 / 20 | 2 / 5 | 5.23 dB peaking at 1.25 GHz, 0.350 V, 1.28 mW, -70.9 dB, 45/45 |
+
+Over the three seeds of the base configuration: 60 of 60 rollouts feasible, mean steps to a feasible design 2.53 +/- 0.06, best-design eye 0.330 +/- 0.014 V, power 1.26 +/- 0.05 mW, HD3 -58.6 +/- 1.2 dB, best reward 20.70 +/- 0.04 (mean +/- std over seeds).
 
 ### Baselines: random search and CMA-ES
 
@@ -161,7 +164,7 @@ out.
 
 | Method (from random starting designs unless noted) | First feasible design, median / worst | Best reward at 50 sims | Cost per new instance |
 |---|---:|---:|---|
-| SAC policy, deterministic rollouts (104 rollouts over 5 evaluations) | 2-3 / 5 | 20.5-20.8 | 2-3 simulations, no search |
+| SAC policy, deterministic rollouts (144 rollouts over 7 evaluations) | 2-3 / 5 | 20.5-20.8 | 2-3 simulations, no search |
 | CMA-ES, random start (6 trials) | 9 / 24 | 20.50 (mean) | ~10 simulations to feasible; 400 to refine |
 | CMA-ES from the box centre (3 trials) | 2-5 | 20.8-21.1; 21.3-21.4 at 400 | 400 simulations per design |
 | Random search | 27 | 19.65 | ~13 simulations per feasible design |
