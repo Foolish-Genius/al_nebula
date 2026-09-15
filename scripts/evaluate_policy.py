@@ -256,7 +256,7 @@ def main() -> None:
             "pvt_all_pass": pvt_passed == len(pvt_results) == 45,
         }
         ValidationReporter(output_dir).write(
-            {**summary["validation"], "model_source": evaluator.model_source, "optimizer": "sac_eval", "selected_action": full_design.tolist(), "parameters": summary["best_parameters"], "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9)},
+            {**summary["validation"], "model_source": evaluator.model_source, "optimizer": "sac_eval", "selected_action": full_design.tolist(), "parameters": summary["best_parameters"], "channel_loss_db_at_nyquist": evaluator.channel_loss_at_nyquist_db()},
             ac_frequency_hz=ac_result["ac_frequency_hz"],
             ac_gain_db=ac_result["ac_gain_db"],
             transient_time_s=transient_result["time_s"],

@@ -131,7 +131,7 @@ def main() -> None:
         "eye_height_v": transient_result["eye_height_v"],
         "eye_width_ui": transient_result["eye_width_ui"],
         "eye_center_ui": transient_result["eye_center_ui"],
-        "channel_loss_db_at_nyquist": SpiceEvaluator.channel_loss_db(2.5e9),
+        "channel_loss_db_at_nyquist": evaluator.channel_loss_at_nyquist_db(),
         "transient_error": transient_result.get("error"),
         "model_source": evaluator.model_source,
         "optimizer": "random",
