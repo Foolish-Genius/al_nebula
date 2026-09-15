@@ -4,6 +4,19 @@
 
 AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. A soft actor-critic (SAC) agent sizes a source-degenerated CTLE by driving ngspice directly: each step runs the DC/AC gate, the PRBS transient through a lossy channel with eye measurement, and (when enabled) the HD3 linearity gate, and the design is then verified across 45 process/voltage/temperature corners with a one-tap behavioral DFE. The backend uses the IHP sg13g2 PSP103 Verilog-A models compiled with OpenVAF to OSDI and loaded by ngspice 47; the generic ngspice Level-1 model remains as a fast debugging path. On the real models the trained policy reaches a fully spec-compliant CTLE from a random starting point in a median of two simulation steps, where random search needs about thirteen.
 
+## Process Design Kit
+
+The Round 0 synopsis named the SkyWater sky130 PDK. The implementation
+targets the IHP sg13g2 open PDK (also 130 nm) instead: the team switched
+during development because the sky130 simulation flow was too slow for an
+RL loop that runs three ngspice analyses per step, while IHP's PSP103
+Verilog-A models compile with OpenVAF to OSDI and run natively in ngspice 47
+at about 0.6 s per environment step with eight simulators in parallel. The
+framework is PDK-agnostic by construction - the generic Level-1 and IHP
+paths share every line except the model library selected by
+`SpiceEvaluator.for_model_source()` - so a sky130 backend is a netlist
+variant plus a corner-library mapping, not a change to the method.
+
 ## Reproducible Commands
 
 Prerequisites: an IHP Open PDK checkout with compiled OSDI models under
