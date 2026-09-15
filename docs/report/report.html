@@ -344,7 +344,8 @@ post-DFE eye height drives the reward. Trained on the corrected metric for 8k st
 the continuous power charge and the margin bonus (<code>rl/feedback.py</code>). Claude (Anthropic SDK, structured JSON
 output validated against a schema) produces them when credentials are present; a context-aware keyword parser is the
 offline fallback, so the loop never blocks on an API. The JSON is passed to <code>train_sac.py --reward-settings</code>
-and recorded in the run's configuration. Example, offline path:</p>
+and recorded in the run's configuration; it applies from the start of that run or of a resumed curriculum stage
+(re-weighting a run in progress is a next step). Example, offline path:</p>
 <pre>> "We are power constrained: current budget matters much more than eye margin, and we don't care about linearity"
 weights: power 3.0, eye_vertical_v 0.33, hd3 0.33 (others 1.0); efficiency_weight 3.0; margin_weight 5.0
 > "Open the eye as much as possible; power is not important"
