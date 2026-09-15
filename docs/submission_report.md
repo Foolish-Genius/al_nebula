@@ -2,26 +2,40 @@
 
 ## Executive Summary
 
-AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. It searches a bounded CTLE action space, evaluates candidates with ngspice, validates transient eye behavior, applies a one-tap behavioral DFE, and verifies process/voltage/temperature corners. The final backend uses IHP sg13g2 PSP103 Verilog-A models compiled to OSDI and a local ngspice 45.2 build with OSDI enabled.
+AutoAnalog-RL is a modular analog equalizer-sizing framework for a PCIe Gen 2 receiver. A soft actor-critic (SAC) agent sizes a source-degenerated CTLE by driving ngspice directly: each step runs the DC/AC gate, the PRBS transient through a lossy channel with eye measurement, and (when enabled) the HD3 linearity gate, and the design is then verified across 45 process/voltage/temperature corners with a one-tap behavioral DFE. The backend uses the IHP sg13g2 PSP103 Verilog-A models compiled with OpenVAF to OSDI and loaded by ngspice 47; the generic ngspice Level-1 model remains as a fast debugging path. On the real models the trained policy reaches a fully spec-compliant CTLE from a random starting point in a median of two simulation steps, where random search needs about thirteen.
 
-## Final Reproducible Command
+## Reproducible Commands
+
+Prerequisites: an IHP Open PDK checkout with compiled OSDI models under
+`ihp-sg13g2/libs.tech/ngspice/osdi/` (`IHP_PDK_ROOT`; see
+`tools/openvaf-link-shim/README.md` for Windows), ngspice 44+ (`NGSPICE`), and
+`pip install -e .[rl]`. `python scripts/check_pdk.py` confirms readiness.
 
 ```bash
-export LD_LIBRARY_PATH=/home/hp/miniconda3/envs/autoanalog/lib:/home/hp/ngspice-45.2/install/lib
-python scripts/run_validation.py \
-  --model-source ihp \
-  --ngspice-binary /home/hp/ngspice-45.2/install/bin/ngspice \
-  --output-dir reports/runs/ihp-submission
+# Train the policy on the IHP models (8 parallel ngspice processes, ~0.6 s/step)
+python scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --timesteps 20000 \
+  --n-envs 8 --hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10 \
+  --max-steps 30 --batch-size 256 --gradient-steps -1 --learning-starts 500 \
+  --ent-coef auto_0.1 --seed 1 --output-dir reports/sac-ihp-v1
+# Random-search baseline with the same reward
+python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 \
+  --invalid-penalty -10 --evaluations 3000 --n-workers 8 --output-dir reports/baseline-ihp-3000
+# Deterministic rollouts of the policy, comparison, and PVT/HD3 validation of its best design
+python scripts/evaluate_policy.py reports/sac-ihp-v1 --rollouts 20 \
+  --baseline reports/baseline-ihp-3000 --output-dir reports/eval-ihp-v1
+# Pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
+python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission
 ```
 
-The command performs 100 bounded CTLE evaluations, selects the best AC candidate, runs transient PRBS validation, computes eye metrics, applies the one-tap DFE model, executes 45 PVT corners, and writes JSON, CSV, and PNG evidence.
+Every command writes JSON, CSV, and PNG evidence to its output directory.
 
 ## Architecture
 
 ```text
-bounded search -> CTLE SPICE .op/.ac -> PRBS transient -> 2-UI eye
-                                      \-> one-UI sampler -> 1-tap DFE
-                                      \-> HD3 / noise / area / PVT
+SAC agent (or bounded search) -> CTLE SPICE .op/.ac -> PRBS transient -> 2-UI eye -> reward
+                                                     \-> HD3 gate (once other specs pass)
+                                                     \-> one-UI sampler -> 1-tap DFE
+                                                     \-> noise / area / 45-corner PVT (validation)
 ```
 
 The CTLE action is `[W_in, R_load, I_bias, R_s, C_s]`. The whole-equalizer interface adds a normalized sixth action for the DFE tap. The analog DFE SPICE template in `DFE/` is retained as a topology reference; the active end-to-end DFE measurement is a behavioral sampled decision-feedback stage.
