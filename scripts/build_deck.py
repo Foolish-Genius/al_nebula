@@ -1,4 +1,7 @@
-"""Build the submission slide deck (16:9 PowerPoint) with speaker notes.
+"""Build the demo-video slide deck (16:9 PowerPoint) with the narration in the speaker notes.
+
+The slide order follows the video script (docs/video_shotlist.md); notes carry
+the script verbatim, with suggested additions prefixed [ADDED].
 
 Example:
     python scripts/build_deck.py --output docs/report/AutoAnalog-RL_deck.pptx --team "Team Name"
@@ -13,20 +16,22 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 FIG = ROOT / "docs" / "report" / "figures"
-SHOTS = ROOT / "reports" / "screenshots"
 
 NAVY = RGBColor(0x16, 0x3A, 0x6B)
 BLUE = RGBColor(0x2B, 0x57, 0x97)
 GREEN = RGBColor(0x1A, 0x7F, 0x37)
 RED = RGBColor(0xB4, 0x23, 0x18)
+GOLD = RGBColor(0xB7, 0x79, 0x1F)
 GREY = RGBColor(0x55, 0x5B, 0x66)
 LIGHT = RGBColor(0xF2, 0xF4, 0xF7)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 BLACK = RGBColor(0x1A, 0x1A, 0x1A)
+TERM_BG = RGBColor(0x0C, 0x1B, 0x2E)
+TERM_FG = RGBColor(0xE6, 0xEE, 0xF8)
 
 W, H = Inches(13.333), Inches(7.5)
 
@@ -38,46 +43,36 @@ class Deck:
         self.blank = self.prs.slide_layouts[6]
         self.count = 0
 
-    # ---- primitives -------------------------------------------------------
-    def slide(self, title: str, notes: str = "", subtitle: str | None = None):
+    def slide(self, title: str, timing: str, notes: str, subtitle: str | None = None):
         s = self.prs.slides.add_slide(self.blank)
         self.count += 1
         bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, W, Inches(1.0))
         bar.fill.solid(); bar.fill.fore_color.rgb = NAVY; bar.line.fill.background()
-        tb = s.shapes.add_textbox(Inches(0.5), Inches(0.12), Inches(11.5), Inches(0.8))
+        tb = s.shapes.add_textbox(Inches(0.5), Inches(0.12), Inches(10.8), Inches(0.8))
         p = tb.text_frame.paragraphs[0]; p.text = title
-        p.font.size = Pt(28); p.font.bold = True; p.font.color.rgb = WHITE
+        p.font.size = Pt(26); p.font.bold = True; p.font.color.rgb = WHITE
         tb.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
-        num = s.shapes.add_textbox(Inches(12.3), Inches(0.3), Inches(0.8), Inches(0.5))
-        q = num.text_frame.paragraphs[0]; q.text = str(self.count); q.font.size = Pt(12); q.font.color.rgb = WHITE; q.alignment = PP_ALIGN.RIGHT
+        tm = s.shapes.add_textbox(Inches(11.2), Inches(0.28), Inches(1.9), Inches(0.5))
+        q = tm.text_frame.paragraphs[0]; q.text = timing; q.font.size = Pt(12); q.font.color.rgb = RGBColor(0xC8, 0xD4, 0xE8); q.alignment = PP_ALIGN.RIGHT
         if subtitle:
-            st = s.shapes.add_textbox(Inches(0.5), Inches(1.1), Inches(12.3), Inches(0.5))
-            r = st.text_frame.paragraphs[0]; r.text = subtitle; r.font.size = Pt(16); r.font.color.rgb = GREY; r.font.italic = True
-        foot = s.shapes.add_textbox(Inches(0.5), Inches(7.05), Inches(8), Inches(0.35))
-        f = foot.text_frame.paragraphs[0]; f.text = "AutoAnalog-RL  ·  Nebula: AI/ML for Analog Circuit Design  ·  Round 0"; f.font.size = Pt(10); f.font.color.rgb = GREY
-        if notes:
-            s.notes_slide.notes_text_frame.text = notes
+            st = s.shapes.add_textbox(Inches(0.5), Inches(1.08), Inches(12.3), Inches(0.5))
+            r = st.text_frame.paragraphs[0]; r.text = subtitle; r.font.size = Pt(15); r.font.color.rgb = GREY; r.font.italic = True
+        foot = s.shapes.add_textbox(Inches(0.5), Inches(7.05), Inches(9), Inches(0.35))
+        f = foot.text_frame.paragraphs[0]; f.text = f"AutoAnalog-RL  ·  Nebula: AI/ML for Analog Circuit Design  ·  Round 0  ·  {self.count}"; f.font.size = Pt(10); f.font.color.rgb = GREY
+        s.notes_slide.notes_text_frame.text = notes
         return s
 
-    def bullets(self, s, items, left, top, width, height, size=18, color=BLACK):
+    def bullets(self, s, items, left, top, width, height, size=16, color=BLACK, spacing=6):
         tb = s.shapes.add_textbox(left, top, width, height)
         tf = tb.text_frame; tf.word_wrap = True
-        first = True
-        for item in items:
-            level = 0
-            if isinstance(item, tuple):
-                item, level = item
-            p = tf.paragraphs[0] if first else tf.add_paragraph()
-            first = False
-            p.text = ("•  " if level == 0 else "–  ") + item
-            p.level = level
-            p.font.size = Pt(size - 3 * level); p.font.color.rgb = color
-            p.space_after = Pt(6)
+        for i, item in enumerate(items):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.text = "•  " + item; p.font.size = Pt(size); p.font.color.rgb = color; p.space_after = Pt(spacing)
         return tb
 
-    def text(self, s, txt, left, top, width, height, size=16, color=BLACK, bold=False, mono=False, align=None, fill=None):
+    def text(self, s, txt, left, top, width, height, size=16, color=BLACK, bold=False, mono=False, align=None, fill=None, wrap=True):
         tb = s.shapes.add_textbox(left, top, width, height)
-        tf = tb.text_frame; tf.word_wrap = True
+        tf = tb.text_frame; tf.word_wrap = wrap
         if fill is not None:
             tb.fill.solid(); tb.fill.fore_color.rgb = fill
         for i, line in enumerate(txt.split("\n")):
@@ -92,9 +87,8 @@ class Deck:
     def image(self, s, path, left, top, width=None, height=None):
         return s.shapes.add_picture(str(path), left, top, width=width, height=height)
 
-    def table(self, s, rows, left, top, width, col_widths=None, size=13, header=True, height=None):
-        n_rows, n_cols = len(rows), len(rows[0])
-        shape = s.shapes.add_table(n_rows, n_cols, left, top, width, height or Inches(0.4) * n_rows)
+    def table(self, s, rows, left, top, width, col_widths=None, size=12):
+        shape = s.shapes.add_table(len(rows), len(rows[0]), left, top, width, Inches(0.38) * len(rows))
         t = shape.table
         if col_widths:
             for i, w in enumerate(col_widths):
@@ -103,312 +97,284 @@ class Deck:
             for c, val in enumerate(row):
                 cell = t.cell(r, c); cell.text = str(val)
                 for p in cell.text_frame.paragraphs:
-                    p.font.size = Pt(size)
-                    p.font.bold = header and r == 0
-                    p.font.color.rgb = WHITE if (header and r == 0) else BLACK
-                cell.fill.solid(); cell.fill.fore_color.rgb = BLUE if (header and r == 0) else (LIGHT if r % 2 == 0 else WHITE)
+                    p.font.size = Pt(size); p.font.bold = r == 0
+                    p.font.color.rgb = WHITE if r == 0 else BLACK
+                cell.fill.solid(); cell.fill.fore_color.rgb = BLUE if r == 0 else (LIGHT if r % 2 == 0 else WHITE)
                 cell.margin_left = cell.margin_right = Inches(0.06); cell.margin_top = cell.margin_bottom = Inches(0.03)
         return shape
 
-    def stat(self, s, big, small, left, top, width=Inches(2.9), color=NAVY):
-        box = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, Inches(1.5))
-        box.fill.solid(); box.fill.fore_color.rgb = LIGHT; box.line.color.rgb = BLUE
-        tf = box.text_frame; tf.word_wrap = True
-        p = tf.paragraphs[0]; p.text = big; p.font.size = Pt(30); p.font.bold = True; p.font.color.rgb = color; p.alignment = PP_ALIGN.CENTER
+    def box(self, s, label, left, top, width, height, color=NAVY, title_size=14, body_size=11):
+        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+        b.fill.solid(); b.fill.fore_color.rgb = color; b.line.fill.background()
+        tf = b.text_frame; tf.word_wrap = True
+        for i, line in enumerate(label.split("\n")):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.text = line; p.font.size = Pt(title_size if i == 0 else body_size); p.font.bold = i == 0; p.font.color.rgb = WHITE; p.alignment = PP_ALIGN.CENTER
+        return b
+
+    def arrow(self, s, left, top, width, height=Inches(0.28), color=BLUE, shape=MSO_SHAPE.RIGHT_ARROW):
+        a = s.shapes.add_shape(shape, left, top, width, height)
+        a.fill.solid(); a.fill.fore_color.rgb = color; a.line.fill.background()
+        return a
+
+    def stat(self, s, big, small, left, top, width=Inches(2.9), color=NAVY, height=Inches(1.35)):
+        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+        b.fill.solid(); b.fill.fore_color.rgb = LIGHT; b.line.color.rgb = BLUE
+        tf = b.text_frame; tf.word_wrap = True
+        p = tf.paragraphs[0]; p.text = big; p.font.size = Pt(28); p.font.bold = True; p.font.color.rgb = color; p.alignment = PP_ALIGN.CENTER
         q = tf.add_paragraph(); q.text = small; q.font.size = Pt(12); q.font.color.rgb = GREY; q.alignment = PP_ALIGN.CENTER
 
-    def save(self, path: Path) -> None:
-        self.prs.save(str(path))
+
+def pipeline(d, s, top, scale=1.0):
+    """Agent -> environment -> evaluator -> ngspice -> outputs, with the LLM frontend below."""
+    boxes = [
+        ("SAC agent\nstable-baselines3", NAVY, 1.8), ("Environment\nΔ actions, reward,\ncorner curriculum", NAVY, 2.1),
+        ("SpiceEvaluator\n1 .op (fail fast)\n2 .ac peaking, power\n3 PRBS7 .tran + channel → eye, DFE\n4 HD3 once others pass", BLUE, 3.4),
+        ("ngspice 47 ×8\nIHP sg13g2 PSP103\nvia OpenVAF / OSDI", NAVY, 2.1), ("Outputs\nsized netlist\nJSON / CSV / PNG", GREEN, 1.8),
+    ]
+    x = Inches(0.4); gap = Inches(0.3); h = Inches(1.9 * scale)
+    for i, (label, colr, w) in enumerate(boxes):
+        w = Inches(w * scale)
+        if i:
+            d.arrow(s, x - gap + Inches(0.03), top + h / 2 - Inches(0.14), gap - Inches(0.06))
+        d.box(s, label, x, top, w, h, color=colr)
+        x += w + gap
+    llm_left = Inches(0.4 + 1.8 * scale + 0.3 + 0.05)
+    d.arrow(s, llm_left + Inches(0.95), top + h + Inches(0.05), Inches(0.28), Inches(0.35), color=GOLD, shape=MSO_SHAPE.UP_ARROW)
+    d.box(s, "LLM frontend\nfeedback → reward weights", llm_left, top + h + Inches(0.45), Inches(2.1 * scale), Inches(0.75), color=GOLD, title_size=12, body_size=10)
 
 
 def build(team: str) -> Presentation:
     d = Deck()
 
-    # 1 Title ---------------------------------------------------------------
+    # 1 ------------------------------------------------------------------ 0:00-0:25
     s = d.prs.slides.add_slide(d.blank); d.count += 1
     bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, W, H); bg.fill.solid(); bg.fill.fore_color.rgb = NAVY; bg.line.fill.background()
-    d.text(s, "AutoAnalog-RL", Inches(0.8), Inches(1.9), Inches(11.5), Inches(1.2), size=54, color=WHITE, bold=True)
-    d.text(s, "Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning", Inches(0.8), Inches(3.0), Inches(11.5), Inches(0.8), size=24, color=WHITE)
-    d.text(s, "PCIe Gen 2 (5 Gbps) CTLE + one-tap DFE  ·  IHP sg13g2 130 nm open PDK  ·  ngspice in the loop", Inches(0.8), Inches(3.9), Inches(11.5), Inches(0.6), size=16, color=RGBColor(0xC8, 0xD4, 0xE8))
+    d.text(s, "AutoAnalog-RL", Inches(0.8), Inches(1.8), Inches(11.5), Inches(1.2), size=54, color=WHITE, bold=True)
+    d.text(s, "Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning", Inches(0.8), Inches(2.9), Inches(11.5), Inches(0.8), size=24, color=WHITE)
+    d.text(s, "PCIe Gen 2 (5 Gbps) receiver equalizer: one-stage CTLE + one-tap DFE  ·  SAC agent driving ngspice  ·  IHP sg13g2 130 nm open PDK",
+           Inches(0.8), Inches(3.8), Inches(11.5), Inches(0.9), size=16, color=RGBColor(0xC8, 0xD4, 0xE8))
+    d.text(s, "github.com/Foolish-Genius/al_nebula", Inches(0.8), Inches(4.9), Inches(11.5), Inches(0.5), size=16, color=WHITE, mono=True)
     d.text(s, f"{team}\nNebula — AI/ML for Analog Circuit Design  ·  Round 0  ·  15 September 2026", Inches(0.8), Inches(5.6), Inches(11.5), Inches(1.0), size=16, color=WHITE)
     s.notes_slide.notes_text_frame.text = (
-        "Hello. This is AutoAnalog-RL: a reinforcement-learning agent that sizes a PCIe Gen 2 receiver equalizer by driving "
-        "ngspice directly, with zero human intervention, on the IHP sg13g2 130 nm open PDK. In the next few minutes I will show "
-        "the problem, the system, a live demo, the evidence, and what we found along the way.")
+        "0:00–0:25 — Introduction. Show: project title / README / repository homepage.\n\n"
+        "Hello everyone. This is our project, AutoAnalog-RL — Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning.\n\n"
+        "Our objective is to automatically size a PCIe Gen 2 receiver equalizer consisting of a one-stage CTLE and a one-tap DFE, using reinforcement learning and circuit simulation.\n\n"
+        "Instead of manually sweeping circuit parameters, our SAC agent interacts directly with ngspice and searches for a design that satisfies the required specifications.")
 
-    # 2 Problem -------------------------------------------------------------
-    s = d.slide("The problem", notes=(
-        "The brief asks for a fully automated framework that sizes an equalizer for a PCIe PHY from target specifications, "
-        "reaching near-optimal designs in far less time than sweeping every MOS, R, C and L value. The specs are coupled: the same "
-        "transistor width sets gain, bandwidth, power, linearity and noise, and the one that matters most, the eye after the "
-        "channel, only shows up in a transient simulation. Manual sweeps do not scale and generic optimisers burn their budget "
-        "in infeasible regions."))
-    d.bullets(s, [
-        "Size an analog equalizer (CTLE + 1-tap DFE) for a PCIe Gen 2 PHY from target specs — zero human intervention",
-        "Coupled specs: one width sets gain, bandwidth, power, linearity, noise; the eye is only visible in a transient",
-        "Must beat sweeping the MOS / R / C / L space; must hold across 45 PVT corners",
-        "Simulator-bound: every candidate costs several ngspice runs",
-    ], Inches(0.6), Inches(1.4), Inches(7.2), Inches(4.5), size=18)
-    d.table(s, [
-        ["Spec (brief)", "Target"],
-        ["Nyquist", "2.5 GHz (5 Gbps), peaking tunable 1.25–2.5 GHz"],
-        ["HF peaking", "3–12 dB"],
-        ["Eye after channel", "> 100 mV, > 0.4 UI"],
-        ["HD3 (100 MHz)", "< −30 dB"],
-        ["Noise 10 MHz–5 GHz", "< 1.5 mV rms"],
-        ["Power / Area", "< 15 mW / < 0.05 mm²"],
-        ["PVT", "TT SS FF SF FS · VDD ±5% · 0–125 °C"],
-    ], Inches(8.1), Inches(1.5), Inches(4.8), col_widths=[Inches(1.9), Inches(2.9)], size=12)
-
-    # 3 System --------------------------------------------------------------
-    s = d.slide("The system: RL agent → fail-fast SPICE gates → sized netlist", notes=(
-        "Here is the loop. The SAC agent proposes a normalised design vector. The environment maps it to device values and the "
-        "evaluator runs the ngspice gates in fail-fast order: DC operating point first, then AC for peaking and power, then a "
-        "PRBS7 transient through a lossy channel for the eye, then HD3 once everything else passes. Anything that fails early "
-        "costs nothing more. The reward is transparent, and an LLM frontend can re-weight it from plain-language feedback. "
-        "Eight ngspice processes run in parallel on a laptop: about 0.6 seconds per RL step on the real PSP103 models."))
+    # 2 ------------------------------------------------------------------ 0:25-1:00
+    s = d.slide("Repository and overall flow", "0:25 – 1:00", notes=(
+        "0:25–1:00 — Repository and overall flow. Show: GitHub repository → folders rl/, spice/, netlists/, scripts/, tests/.\n\n"
+        "This is our project repository.\n\n"
+        "The rl folder contains the specifications, reward function, environment, DFE and PVT implementation. The spice folder handles the simulator interface and measurements, while netlists contains the circuit topology.\n\n"
+        "The main training and evaluation scripts are inside scripts, and we also have a regression test suite.\n\n"
+        "The overall flow is: the SAC agent generates a normalized design action, the evaluator converts it into circuit parameters, generates the SPICE netlist, and runs the simulations. The resulting circuit metrics are then converted into a reward and sent back to the agent.\n\n"
+        "Show: architecture diagram.\n\n"
+        "The simulator uses the IHP sg13g2 130-nanometer open PDK with PSP103 models, running through ngspice.\n\n"
+        "[ADDED] The brief allows either IHP or sky130; our synopsis named sky130 — we built on IHP because its PSP103 Verilog-A models run through ngspice's OSDI interface at about 0.6 seconds per RL step."))
+    d.text(s, "al_nebula/", Inches(0.5), Inches(1.3), Inches(4.2), Inches(0.4), size=15, bold=True, mono=True, color=NAVY)
+    d.text(s, "rl/         specs, reward, environment, DFE, PVT, LLM\n"
+              "spice/      ngspice adapter and every measurement gate\n"
+              "netlists/   CTLE topology (SPICE template)\n"
+              "scripts/    train_sac, evaluate_policy, baselines, demo\n"
+              "tests/      59-test regression suite (no ngspice needed)\n"
+              "tools/      OpenVAF link shim (Windows OSDI build)\n"
+              "docs/       report, deck, video shot list",
+           Inches(0.5), Inches(1.7), Inches(5.6), Inches(2.6), size=11.5, mono=True, fill=LIGHT)
+    d.text(s, "Flow: action → device values → SPICE netlist → gates in fail-fast order → metrics → reward → agent",
+           Inches(0.5), Inches(4.45), Inches(5.6), Inches(0.9), size=13, color=GREY)
+    d.text(s, "Simulator: IHP sg13g2 130 nm, PSP103 via OpenVAF/OSDI in ngspice 47, 8 processes, ~0.6 s per step\n(brief allows IHP or sky130; PSP103 through OSDI was the fast path)",
+           Inches(0.5), Inches(5.3), Inches(5.6), Inches(1.2), size=12, color=GREY)
+    pipeline_top = Inches(1.4)
+    # pipeline on the right at reduced scale
     boxes = [
-        ("SAC agent\nstable-baselines3", NAVY), ("Environment\nΔ actions, reward,\ncorner curriculum", NAVY),
-        ("SpiceEvaluator\n1 .op (fail fast)\n2 .ac peaking, power\n3 PRBS7 .tran + channel → eye, DFE\n4 HD3 once others pass", BLUE),
-        ("ngspice 47 ×8\nIHP sg13g2 PSP103\nvia OpenVAF / OSDI", NAVY), ("Outputs\nsized netlist\nJSON / CSV / PNG", GREEN),
+        ("SAC agent", NAVY), ("Environment", NAVY), ("SpiceEvaluator\n.op → .ac → PRBS .tran\n→ eye/DFE → HD3", BLUE), ("ngspice ×8", NAVY), ("Outputs", GREEN),
     ]
-    x = Inches(0.4)
-    widths = [Inches(1.9), Inches(2.2), Inches(3.4), Inches(2.2), Inches(1.9)]
-    gap = Inches(0.3)
-    for index, ((label, colr), w) in enumerate(zip(boxes, widths)):
-        if index:
-            arrow = s.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x - gap + Inches(0.03), Inches(2.45), gap - Inches(0.06), Inches(0.3))
-            arrow.fill.solid(); arrow.fill.fore_color.rgb = BLUE; arrow.line.fill.background()
-        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, Inches(1.5), w, Inches(2.2))
-        b.fill.solid(); b.fill.fore_color.rgb = colr; b.line.fill.background()
-        tf = b.text_frame; tf.word_wrap = True
-        for i, line in enumerate(label.split("\n")):
-            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.text = line; p.font.size = Pt(15 if i == 0 else 12); p.font.bold = i == 0; p.font.color.rgb = WHITE; p.alignment = PP_ALIGN.CENTER
-        x += w + gap
-    llm = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(2.7), Inches(4.25), Inches(2.3), Inches(0.8))
-    llm.fill.solid(); llm.fill.fore_color.rgb = RGBColor(0xB7, 0x79, 0x1F); llm.line.fill.background()
-    p = llm.text_frame.paragraphs[0]; p.text = "LLM frontend\nfeedback → reward weights"; p.font.size = Pt(12); p.font.color.rgb = WHITE; p.alignment = PP_ALIGN.CENTER
-    up = s.shapes.add_shape(MSO_SHAPE.UP_ARROW, Inches(3.7), Inches(3.78), Inches(0.3), Inches(0.42))
-    up.fill.solid(); up.fill.fore_color.rgb = RGBColor(0xB7, 0x79, 0x1F); up.line.fill.background()
-    d.bullets(s, [
-        "Bounded 5-parameter action: W_in, R_load, I_bias, R_s, C_s (6 with the DFE tap)",
-        "Reward = −Σ wᵢ·violationᵢ − power charge + success bonus + margin bonus; DC failure −10",
-        "Real IHP PSP103 models (OpenVAF → OSDI), 8 simulators wide, 0.6 s per environment step",
-    ], Inches(0.6), Inches(5.3), Inches(12.2), Inches(1.7), size=14)
+    y = Inches(1.4); xl = Inches(6.5); bw = Inches(6.4); bh = Inches(0.62)
+    for i, (label, colr) in enumerate(boxes):
+        if i:
+            d.arrow(s, xl + bw / 2 - Inches(0.14), y - Inches(0.3), Inches(0.28), Inches(0.26), shape=MSO_SHAPE.DOWN_ARROW)
+        height = Inches(1.0) if "\n" in label else bh
+        d.box(s, label, xl, y, bw, height, color=colr, title_size=13, body_size=11)
+        y += height + Inches(0.34)
+    d.box(s, "LLM frontend: feedback → reward weights", xl, y + Inches(0.05), bw, Inches(0.5), color=GOLD, title_size=12)
 
-    # 4 Circuit ---------------------------------------------------------------
-    s = d.slide("The circuit and the specs the reward sees", notes=(
-        "The CTLE is a differential NMOS pair with resistive loads and RC source degeneration. The agent sizes five values inside "
-        "these bounds. The transient gate sends a PRBS7 at 5 gigabits through a two-section RC channel with about 10 dB of loss at "
-        "Nyquist, and the eye is measured after it. We use tighter eye targets than the brief, 250 millivolts and 0.7 UI, so the "
-        "policy delivers margin rather than a marginal pass."))
-    d.image(s, FIG / "ac_response.png", Inches(0.5), Inches(1.4), width=Inches(6.0))
+    # 3 ------------------------------------------------------------------ 1:00-1:35
+    s = d.slide("Circuit and parameters", "1:00 – 1:35", notes=(
+        "1:00–1:35 — Circuit and parameters. Show: CTLE circuit diagram.\n\n"
+        "The circuit being sized is a differential NMOS CTLE with resistive loads and RC source degeneration.\n\n"
+        "The agent controls five CTLE parameters: input transistor width, load resistance, bias current, source degeneration resistance, and source degeneration capacitance.\n\n"
+        "For the complete equalizer, a sixth parameter is added for the one-tap DFE.\n\n"
+        "At every step, the evaluator checks the design progressively: first the DC operating point, then AC response and peaking, followed by the PRBS transient through the lossy channel, eye measurement and DFE, and finally the HD3 linearity check."))
+    d.image(s, FIG / "ctle_schematic.png", Inches(0.5), Inches(1.3), height=Inches(3.9))
     d.table(s, [
-        ["Knob", "Range"], ["W_in", "0.5–50 µm"], ["R_load", "100–1000 Ω"], ["I_bias", "0.1–2 mA"], ["R_s", "10–500 Ω"], ["C_s", "1 fF–1 pF"], ["DFE tap", "−0.5…+0.5 (optional)"],
-    ], Inches(6.9), Inches(1.4), Inches(2.8), col_widths=[Inches(1.1), Inches(1.7)], size=12)
-    d.table(s, [
-        ["Spec (ours)", "Target", "Gate"],
-        ["Peaking @ Nyquist", "3–12 dB", ".ac"], ["Power", "≤ 2 mW", ".op"], ["Eye height", "≥ 0.25 V", "PRBS7 .tran"],
-        ["Eye width", "≥ 0.7 UI", "PRBS7 .tran"], ["HD3", "≤ −30 dB", "tone .tran"], ["Noise", "≤ 1.5 mV rms", ".noise (validation)"], ["PVT", "45/45", "5×3×3 corners"],
-    ], Inches(9.9), Inches(1.4), Inches(3.1), col_widths=[Inches(1.25), Inches(0.9), Inches(0.95)], size=11)
-    d.text(s, "Source-degenerated differential CTLE; devices are IHP sg13_lv_nmos, L = 130 nm. AC response of a policy design: 4.2 dB of peaking at 2.5 GHz.",
-           Inches(0.5), Inches(5.0), Inches(6.2), Inches(1.0), size=12, color=GREY)
+        ["Parameter", "Range"], ["W_in  input width", "0.5 – 50 µm"], ["R_load", "100 – 1000 Ω"], ["I_bias", "0.1 – 2 mA"],
+        ["R_s  degeneration", "10 – 500 Ω"], ["C_s  degeneration", "1 fF – 1 pF"], ["DFE tap (6th, equalizer)", "−0.5 … +0.5"],
+    ], Inches(7.2), Inches(1.4), Inches(5.6), col_widths=[Inches(3.2), Inches(2.4)], size=13)
+    gates = [("1  .op", "DC operating point\nfail fast"), ("2  .ac", "peaking @ Nyquist,\npower"), ("3  PRBS7 .tran", "lossy channel → eye,\none-tap DFE"), ("4  HD3", "100 MHz tone,\nonce others pass")]
+    x = Inches(0.5)
+    for i, (t, b) in enumerate(gates):
+        if i:
+            d.arrow(s, x - Inches(0.34), Inches(5.95), Inches(0.26))
+        d.box(s, f"{t}\n{b}", x, Inches(5.45), Inches(2.85), Inches(1.3), color=BLUE if i != 3 else NAVY, title_size=13, body_size=11)
+        x += Inches(2.85) + Inches(0.4)
+    d.text(s, "Gates run in this order; a design that fails early costs no further simulation.", Inches(0.5), Inches(6.78), Inches(12), Inches(0.3), size=11, color=GREY)
 
-    # 5 Live demo -------------------------------------------------------------
-    s = d.slide("Live: the policy sizes a CTLE from a random start", subtitle="python scripts/demo_rollout.py reports/sac-ihp-pvt   (random design, random PVT corner)", notes=(
-        "This is a real rollout. The policy starts from a random design at a random PVT corner, here slow-slow silicon at 62 "
-        "degrees. Each line is one ngspice evaluation. Watch the spec checklist: peaking and power pass immediately, the eye is "
-        "closed, and within three simulations, seven seconds of wall time, every spec is green including HD3, and the sized "
-        "netlist is written. I will run this live in the video with a fresh random start."))
+    # 4 ------------------------------------------------------------------ 1:35-2:25 (a)
+    s = d.slide("RL training: the SAC loop, live", "1:35 – 2:25", subtitle="python scripts/demo_rollout.py reports/sac-ihp-pvt   — run live: random design, random PVT corner", notes=(
+        "1:35–2:25 — RL training demo. Show: [ADDED] run demo_rollout.py live here, then the training screenshots and learning curves on the next slide.\n\n"
+        "Now we move to the main part of the project — the reinforcement learning loop.\n\n"
+        "We use a Soft Actor-Critic, or SAC, agent. The agent starts from a random circuit design and learns which parameter changes improve the circuit performance.\n\n"
+        "The reward considers the specification violations as well as power and the margin from the required specifications.\n\n"
+        "We also use fail-fast simulation, so a design that already fails an early gate does not unnecessarily spend simulation time on the later analyses.\n\n"
+        "[ADDED, while the demo runs] Each line is one ngspice evaluation of a new design; the checklist on the right shows which specs pass. From a random start at a random corner, every spec is met within a few simulations and the sized netlist is written."))
     demo = (FIG / "demo_output.txt").read_text(encoding="utf-8").strip().splitlines()
     demo = [line.replace("  [ok] ", " OK:").replace("  [--] ", " --:").replace("[ok] ", "OK:").replace("[--] ", "--:") for line in demo[:12]]
-    box = d.text(s, "\n".join(demo), Inches(0.4), Inches(1.65), Inches(12.5), Inches(3.4), size=9.5, mono=True, fill=RGBColor(0x0C, 0x1B, 0x2E), color=RGBColor(0xE6, 0xEE, 0xF8))
-    box.text_frame.word_wrap = False
-    d.stat(s, "3 sims", "to meet every spec", Inches(0.6), Inches(5.3))
-    d.stat(s, "7 s", "wall time, laptop", Inches(3.7), Inches(5.3))
-    d.stat(s, "SS / 1.0 V / 62 °C", "random corner, random start", Inches(6.8), Inches(5.3), width=Inches(3.4))
+    d.text(s, "\n".join(demo), Inches(0.4), Inches(1.6), Inches(12.5), Inches(3.3), size=9.5, mono=True, fill=TERM_BG, color=TERM_FG, wrap=False)
+    d.stat(s, "3 sims", "to meet every spec", Inches(0.6), Inches(5.2))
+    d.stat(s, "7 s", "wall time on a laptop", Inches(3.7), Inches(5.2))
+    d.stat(s, "SS / 1.0 V / 62 °C", "random corner, random start", Inches(6.8), Inches(5.2), width=Inches(3.4))
+    d.text(s, "Reward = −Σ wᵢ·violationᵢ − power charge + success bonus + margin bonus\nDC failure: −10, fail fast", Inches(10.4), Inches(5.2), Inches(2.7), Inches(1.4), size=11, color=GREY)
 
-    # 6 Training ---------------------------------------------------------------
-    s = d.slide("Training: seven runs on the real models, all converge within ~2k steps", notes=(
-        "These are the learning curves for all seven runs on the IHP models: three seeds, HD3 enforced, the PVT curriculum, the "
-        "whole equalizer, and the 1.25 gigahertz retune. Reward per step, fraction of steps meeting every spec, and eye height "
-        "against the 0.25 volt target. Every run reaches 92 to 97 percent feasible steps within about two thousand steps; the "
-        "curriculum and retune stages start converged because they resume a trained policy. Each run is one to two hours on a laptop."))
-    d.image(s, FIG / "learning_curves.png", Inches(0.4), Inches(1.4), width=Inches(12.5))
-    d.text(s, "SAC, 8 thread-parallel envs, hold-on-success episodes with a margin bonus · 12k steps ≈ 2 h on a 12-core laptop", Inches(0.5), Inches(6.3), Inches(12), Inches(0.5), size=13, color=GREY)
+    # 5 ------------------------------------------------------------------ 1:35-2:25 (b)
+    s = d.slide("Training converges in ~2k steps; 60/60 rollouts feasible over three seeds", "1:35 – 2:25", notes=(
+        "Show: learning curve / reward curve / feasible fraction (and a live-training capture from reports/screenshots if you want to show it ran).\n\n"
+        "The training converges in approximately two thousand environment steps. Across the three base seeds, all 60 out of 60 deterministic rollouts reached a feasible design, with an average of about 2.5 steps to reach feasibility.\n\n"
+        "These plots show the reward and feasibility improving during training, demonstrating that the agent is learning rather than simply performing a blind sweep."))
+    d.image(s, FIG / "learning_curves.png", Inches(0.4), Inches(1.3), width=Inches(12.5))
+    d.stat(s, "~2k steps", "to converge, every run", Inches(0.6), Inches(5.5), height=Inches(1.2))
+    d.stat(s, "60 / 60", "rollouts feasible, 3 seeds", Inches(3.7), Inches(5.5), height=Inches(1.2))
+    d.stat(s, "2.53 ± 0.06", "steps to feasibility (mean over seeds)", Inches(6.8), Inches(5.5), width=Inches(3.4), height=Inches(1.2))
+    d.stat(s, "95 %", "of training steps meet every spec", Inches(10.4), Inches(5.5), width=Inches(2.6), height=Inches(1.2))
 
-    # 7 Results table -----------------------------------------------------------
-    s = d.slide("Results: every policy design passes every measured spec", notes=(
-        "Deterministic rollouts from 20 random starting designs per run. Every run: all rollouts reach a fully feasible design, "
-        "in a median of two to three simulations, worst case five. The best designs sit at 0.32 to 0.37 volts of eye after the "
-        "channel, around one milliwatt, HD3 near minus 60 dB, and 45 out of 45 PVT corners. Three seeds agree to within a few "
-        "percent: 2.53 plus or minus 0.06 steps to feasibility."))
+    # 6 ------------------------------------------------------------------ 2:25-3:15 (eye)
+    s = d.slide("Result: post-channel eye diagram", "2:25 – 3:15", notes=(
+        "2:25–3:15 — Show actual circuit results. Show: eye diagram first.\n\n"
+        "Here is one of the key outputs — the post-channel eye diagram.\n\n"
+        "For the seed-1 design, the measured eye height is about 0.327 volts with an eye width of 0.88 UI, which satisfies our internal target of 0.25 volts and 0.7 UI."))
+    d.image(s, FIG / "eye_diagram.png", Inches(0.5), Inches(1.3), height=Inches(5.5))
+    d.stat(s, "0.327 V", "eye height (target ≥ 0.25 V)", Inches(8.6), Inches(1.6), width=Inches(4.2))
+    d.stat(s, "0.88 UI", "eye width (target ≥ 0.7 UI)", Inches(8.6), Inches(3.2), width=Inches(4.2))
+    d.text(s, "Two-UI eye after the −10 dB channel, PRBS7 at 5 Gbps, seed-1 policy design. Measured against the transmitted bits: opening = min(ones) − max(zeros) at the best sampling phase.",
+           Inches(8.6), Inches(4.8), Inches(4.2), Inches(1.8), size=12, color=GREY)
+
+    # 7 ------------------------------------------------------------------ 2:25-3:15 (AC)
+    s = d.slide("Result: AC response and peaking", "2:25 – 3:15", notes=(
+        "Show: AC response plot.\n\n"
+        "Next is the AC response. The design shows approximately 4.2 dB of high-frequency peaking at the 2.5 GHz Nyquist frequency, which is within our required 3 to 12 dB range.\n\n"
+        "[ADDED] The Nyquist frequency is a specification input: retargeting the same policy to 1.25 gigahertz, PCIe Gen 1, gives 5.23 dB of peaking where the 2.5 gigahertz design gave only 2.87, with 20 out of 20 rollouts feasible."))
+    d.image(s, FIG / "ac_response.png", Inches(0.5), Inches(1.3), width=Inches(8.0))
+    d.stat(s, "4.2 dB", "peaking at 2.5 GHz (target 3–12 dB)", Inches(8.9), Inches(1.6), width=Inches(4.0))
+    d.stat(s, "5.23 dB", "at 1.25 GHz after retuning (--spec nyquist_frequency_hz=1.25e9)", Inches(8.9), Inches(3.2), width=Inches(4.0))
+    d.text(s, "Peaking = gain at Nyquist − DC gain, CTLE alone (channel bypassed for the AC gate). Tunable 1.25–2.5 GHz: the 2.5 GHz design gives only 2.87 dB at 1.25 GHz; the retuned policy moves R_s 182 → 365 Ω.",
+           Inches(8.9), Inches(4.8), Inches(4.0), Inches(1.9), size=12, color=GREY)
+
+    # 8 ------------------------------------------------------------------ 2:25-3:15 (PVT + table)
+    s = d.slide("Result: 45 PVT corners and the design summary", "2:25 – 3:15", notes=(
+        "Show: 45-corner plot / validation table, then the results table.\n\n"
+        "The design is then validated across the complete 45 PVT corners. The peaking remains within the required range across all of these corners.\n\n"
+        "[ADDED] The policy was also fine-tuned across all 45 corners: in evaluation, 24 of 24 rollouts that started at random corners reached a feasible design in a median of 2 steps.\n\n"
+        "For the curriculum-trained design, the best result has an eye height of 0.370 volts, power of 1.12 milliwatts, and HD3 of minus 61.9 dB, while passing all 45 PVT corners."))
+    d.image(s, FIG / "pvt_peaking.png", Inches(0.4), Inches(1.25), width=Inches(7.6))
     d.table(s, [
-        ["Run", "Variant", "Train feasible", "Rollouts", "Steps (med / worst)", "Best design: eye · power · HD3 · PVT"],
-        ["seed 1 (30k)", "—", "95.5%", "20/20", "2 / 4", "0.327 V · 1.22 mW · −57.8 dB · 45/45"],
-        ["seed 2 (12k)", "—", "95.5%", "20/20", "3 / 4", "0.316 V · 1.22 mW · −57.7 dB · 45/45"],
-        ["seed 3 (12k)", "—", "95.5%", "20/20", "2.5 / 4", "0.348 V · 1.33 mW · −60.2 dB · 45/45"],
-        ["hd3 (12k)", "HD3 enforced in reward", "95.6%", "20/20", "2.5 / 4", "0.335 V · 1.24 mW · −58.1 dB · 45/45"],
-        ["pvt (+8k)", "curriculum: random corner per episode", "95.4%", "24/24 @ random corners", "2 / 4", "0.370 V · 1.12 mW · −61.9 dB · 45/45"],
-        ["eq (8k)", "CTLE + DFE tap in the action", "92.3%", "20/20", "3 / 5", "0.325→0.355 V post-DFE · 1.36 mW · −71.6 dB · 45/45"],
-        ["gen1 (+3k)", "retuned to 1.25 GHz Nyquist", "96.5%", "20/20", "2 / 5", "5.23 dB @ 1.25 GHz · 0.350 V · 1.28 mW · 45/45"],
-    ], Inches(0.4), Inches(1.4), Inches(12.5), col_widths=[Inches(1.4), Inches(2.9), Inches(1.3), Inches(1.9), Inches(1.5), Inches(3.5)], size=12)
-    d.text(s, "Three seeds: 60/60 rollouts feasible · 2.53 ± 0.06 steps to feasibility · eye 0.330 ± 0.014 V · power 1.26 ± 0.05 mW · HD3 −58.6 ± 1.2 dB",
-           Inches(0.5), Inches(5.6), Inches(12.3), Inches(0.6), size=14, color=NAVY, bold=True)
+        ["Run", "Rollouts", "Steps", "Best design"],
+        ["seed 1 / 2 / 3", "60/60", "2 – 3", "0.32–0.35 V · 1.2–1.3 mW · 45/45"],
+        ["HD3 enforced", "20/20", "2.5", "0.335 V · 1.24 mW · −58 dB · 45/45"],
+        ["PVT curriculum", "24/24 @ corners", "2", "0.370 V · 1.12 mW · −61.9 dB · 45/45"],
+        ["Equalizer (+DFE)", "20/20", "3", "0.355 V post-DFE · 1.36 mW · 45/45"],
+        ["Retune 1.25 GHz", "20/20", "2", "5.23 dB · 0.350 V · 1.28 mW · 45/45"],
+    ], Inches(8.2), Inches(1.4), Inches(4.8), col_widths=[Inches(1.35), Inches(1.05), Inches(0.6), Inches(1.8)], size=10)
+    d.text(s, "5 process × 3 supply (±5 %) × 3 temperature (0 / 62.5 / 125 °C) = 45 corners; every corner inside the 3–12 dB window. Curriculum: stage 1 nominal, stage 2 a random corner per episode.",
+           Inches(0.5), Inches(5.0), Inches(7.5), Inches(1.0), size=12, color=GREY)
+    d.stat(s, "45 / 45", "corners pass", Inches(8.4), Inches(4.7), width=Inches(2.2), height=Inches(1.1))
+    d.stat(s, "24 / 24", "rollouts @ random corners", Inches(10.8), Inches(4.7), width=Inches(2.2), height=Inches(1.1))
 
-    # 8 Baselines -------------------------------------------------------------
-    s = d.slide("Versus random search and CMA-ES: the win is amortisation", notes=(
-        "Two baselines on the same models and reward. Random search satisfies every spec 7.9 percent of the time, first hit at "
-        "design 27. CMA-ES is a strong optimiser here: given 400 simulations per design it reaches the same quality the policy "
-        "reaches in training, and from a random start it needs a median of nine evaluations to get feasible. The policy needs "
-        "two to three. So the honest claim is amortisation: train once, then size any new instance, a new start, a new corner, a "
-        "re-weighted reward, in a couple of simulations with no per-instance search."))
-    d.image(s, FIG / "budget_curve.png", Inches(0.4), Inches(1.4), width=Inches(6.3))
+    # 9 ------------------------------------------------------------------ 3:15-3:45
+    s = d.slide("DFE: the complete equalizer", "3:15 – 3:45", notes=(
+        "3:15–3:45 — DFE demo. Show: CTLE → channel → DFE diagram and DFE eye plot.\n\n"
+        "We also extended the system to size the complete equalizer by adding a one-tap DFE.\n\n"
+        "Importantly, we corrected the eye measurement so that the DFE eye is evaluated against the transmitted PRBS bits rather than the DFE's own decisions.\n\n"
+        "With the corrected measurement, the DFE still provides a real improvement. One example improves the eye height from 0.327 volts to 0.455 volts with a tap of approximately plus 0.075, with no bit errors.\n\n"
+        "[ADDED] We found and fixed two measurement flaws this way, by letting the agent exploit them: an FFT leakage floor that had faked an HD3 failure at minus 25 dB — the real value is minus 58 — and the self-labelled DFE eye, where the agent pushed the tap to its bound while the receiver got 54 of 127 bits wrong."))
+    chain = [("Transmitter", "PRBS7, NRZ\n5 Gbps"), ("Channel", "2-section RC\n−10 dB @ Nyquist"), ("CTLE", "5 sized values\npeaking 3–12 dB"), ("Sampler", "UI-centre samples\naligned to the bits"), ("1-tap DFE", "y[n] − tap · d[n−1]\ntap sized by the agent"), ("Eye vs. bits", "min(ones) − max(zeros)\nbit errors counted")]
+    x = Inches(0.4)
+    for i, (t, b) in enumerate(chain):
+        if i:
+            d.arrow(s, x - Inches(0.27), Inches(1.95), Inches(0.2))
+        d.box(s, f"{t}\n{b}", x, Inches(1.4), Inches(1.9), Inches(1.15), color=BLUE if i in (2, 4) else NAVY, title_size=12, body_size=10)
+        x += Inches(1.9) + Inches(0.27)
+    d.image(s, FIG / "eye_diagram_equalizer.png", Inches(0.5), Inches(2.8), height=Inches(3.9))
+    d.stat(s, "0.327 → 0.455 V", "eye with a swept tap of +0.075, zero bit errors", Inches(6.4), Inches(2.9), width=Inches(3.2), height=Inches(1.2))
+    d.stat(s, "0.51 V", "post-DFE eye held during equalizer training (CTLE-only ≈ 0.35 V)", Inches(9.8), Inches(2.9), width=Inches(3.2), height=Inches(1.2))
+    d.text(s, "Two measurement flaws found by the agent and fixed:\n"
+              "•  HD3: 2.5-cycle rectangular FFT window → leakage floor at −25 dB on every design. Integer-cycle Hann window → −58 dB (28 dB margin).\n"
+              "•  DFE eye: labelled by the DFE's own decisions → a large tap 'opens' the eye by itself. Agent pushed the tap to +0.5 with 54/127 bit errors. Now measured against the transmitted bits; zero eye on any error.",
+           Inches(6.4), Inches(4.3), Inches(6.6), Inches(2.5), size=11.5, color=BLACK)
+
+    # 10 ----------------------------------------------------------------- 3:45-4:20
+    s = d.slide("Compared with conventional search", "3:45 – 4:20", notes=(
+        "3:45–4:20 — Compare with conventional search. Show: SAC vs random / CMA-ES graph and table.\n\n"
+        "Finally, we compare the RL policy against conventional search methods.\n\n"
+        "Random search requires about 13 simulations per feasible design, while CMA-ES requires around 9 simulations from random starting points.\n\n"
+        "In comparison, the trained SAC policy reaches a feasible design in a median of 2 to 3 simulations, without performing a new optimization search for every starting point.\n\n"
+        "We also tested the pre-ML AC-only bounded search. Although it could optimize the AC response, its resulting post-channel eye was only 0.160 volts, showing why optimizing only frequency-domain characteristics is not sufficient."))
+    d.image(s, FIG / "budget_curve.png", Inches(0.4), Inches(1.3), width=Inches(5.6))
     d.table(s, [
-        ["Method (random starts)", "First feasible (med / worst)", "Best @ 50 sims", "Per new instance"],
-        ["SAC policy (144 rollouts)", "2–3 / 5", "20.5–20.8", "2–3 sims, no search"],
-        ["CMA-ES, random start", "9 / 24", "20.50", "~10 to feasible, 400 to refine"],
-        ["CMA-ES, box centre", "2–5", "20.8–21.1 (21.3 @ 400)", "400 per design"],
-        ["Random search", "27", "19.65", "~13 per feasible design"],
-    ], Inches(6.9), Inches(1.5), Inches(6.1), col_widths=[Inches(2.1), Inches(1.5), Inches(1.3), Inches(1.2)], size=11)
+        ["Method (random starting designs)", "First feasible design", "Per new instance"],
+        ["SAC policy (144 rollouts)", "median 2–3, worst 5", "2–3 simulations, no search"],
+        ["CMA-ES, random start (6 trials)", "median 9, worst 24", "~10 to feasible; 400 to refine"],
+        ["Random search (3000 designs)", "#27 (7.9 % feasible)", "~13 per feasible design"],
+        ["AC-only bounded search (pre-ML)", "never reaches the eye", "0.160 V post-channel eye"],
+    ], Inches(7.0), Inches(1.4), Inches(6.0), col_widths=[Inches(2.5), Inches(1.8), Inches(1.7)], size=11)
     d.bullets(s, [
-        "Policy: 3–4× fewer simulations than CMA-ES from the same starts, ~10× fewer than random",
-        "CMA-ES matches the policy's training-best quality at 400 sims per design — stated honestly",
-        "Bounded AC-only search (pre-ML) never reaches the eye spec: 0.160 V",
-    ], Inches(6.9), Inches(4.3), Inches(6.2), Inches(2.5), size=13)
+        "3–4× fewer simulations than CMA-ES from the same starts; ~10× fewer than random",
+        "CMA-ES matches the policy's training-best quality given 400 sims per design — the policy's advantage is amortisation: train once, then 2–3 sims per new instance",
+        "AC-only optimisation cannot see the eye: 0.160 V vs 0.327 V for the policy",
+    ], Inches(7.0), Inches(3.9), Inches(6.0), Inches(2.8), size=12)
+    d.image(s, FIG / "eye_diagram_preml.png", Inches(0.9), Inches(4.85), height=Inches(2.1))
+    d.text(s, "AC-only search: 0.160 V / 0.58 UI", Inches(3.7), Inches(5.6), Inches(3.0), Inches(0.6), size=12, color=RED, bold=True)
 
-    # 9 Eye before/after -----------------------------------------------------------
-    s = d.slide("Eye after the −10 dB channel: AC-only search vs. the policy", notes=(
-        "Left: the design chosen by the pre-ML bounded search, which only looks at the AC response. Its eye after the channel is "
-        "160 millivolts and 0.58 UI, below our target. Right: the policy design, rewarded on the post-channel eye, 327 millivolts "
-        "and 0.88 UI. Same circuit, same channel; the difference is that the agent sees the eye."))
-    d.image(s, FIG / "eye_diagram_preml.png", Inches(0.4), Inches(1.5), width=Inches(6.2))
-    d.image(s, FIG / "eye_diagram.png", Inches(6.8), Inches(1.5), width=Inches(6.2))
-    d.text(s, "Bounded search, AC gate only: 0.160 V / 0.58 UI  —  fails", Inches(0.5), Inches(5.7), Inches(6), Inches(0.5), size=15, color=RED, bold=True)
-    d.text(s, "SAC policy (seed 1): 0.327 V / 0.88 UI  —  passes with margin", Inches(6.9), Inches(5.7), Inches(6), Inches(0.5), size=15, color=GREEN, bold=True)
-
-    # 10 PVT curriculum -----------------------------------------------------------
-    s = d.slide("Curriculum across 45 PVT corners", notes=(
-        "Stage one trains at the nominal corner. Stage two resumes the same policy and simulates every episode at a random one "
-        "of the 45 corners, five process, three supply, three temperature, without telling the policy which. It transfers "
-        "immediately, 95 percent feasible from the first window, and in evaluation 24 out of 24 rollouts at random corners reach "
-        "feasibility in a median of two steps. The best design passes all 45 corners with peaking well inside the window."))
-    d.image(s, FIG / "pvt_peaking.png", Inches(0.4), Inches(1.4), width=Inches(8.4))
-    d.stat(s, "24 / 24", "rollouts feasible at random corners", Inches(9.2), Inches(1.6), width=Inches(3.7))
-    d.stat(s, "45 / 45", "corners pass, best design", Inches(9.2), Inches(3.3), width=Inches(3.7))
-    d.stat(s, "2 steps", "median to feasibility", Inches(9.2), Inches(5.0), width=Inches(3.7))
-    d.text(s, "Per process corner during training: SS 97% · FS 96% · FF 95% · TT 95% · SF 94%", Inches(0.5), Inches(5.6), Inches(8.4), Inches(0.5), size=13, color=GREY)
-
-    # 11 Tunable + equalizer -------------------------------------------------------
-    s = d.slide("Specs in → schematic out: tunable Nyquist and the DFE tap", notes=(
-        "The brief asks for peaking tunable from 1.25 to 2.5 gigahertz. The Nyquist frequency is a specification input: it sets "
-        "the measurement frequency, the data rate, and the channel pole. The 2.5 gigahertz design only peaks 2.87 dB at 1.25, so it "
-        "fails there; resuming the policy with the spec set to 1.25 gigahertz gives 20 out of 20 rollouts and 5.23 dB, and the "
-        "agent moves the degeneration zero down in frequency exactly as a designer would. Second, the whole equalizer: with the "
-        "DFE tap in the action, the policy learns to spend the tap on margin, holding a half-volt post-DFE eye during training."))
-    d.text(s, "Tunable Nyquist frequency", Inches(0.5), Inches(1.4), Inches(6), Inches(0.5), size=20, color=NAVY, bold=True)
+    # 11 ----------------------------------------------------------------- 4:20-4:45
+    s = d.slide("Reproducibility and the final output", "4:20 – 4:45", notes=(
+        "4:20–4:45 — Reproducibility / final output. Show: terminal command → generated sized_ctle.sp → JSON/CSV/PNG output.\n\n"
+        "The entire flow is reproducible through the scripts in our repository.\n\n"
+        "The training and evaluation scripts generate JSON, CSV and PNG evidence, and every validated design also produces a sized SPICE netlist containing the circuit parameters, model information and DFE tap.\n\n"
+        "So the final output is not just an RL score — it is an actual sized circuit together with its simulation and validation results.\n\n"
+        "[ADDED, optional 15 s] Show the LLM frontend: run reward_from_feedback.py with a sentence such as \"power matters much more than eye margin\" and show the weights JSON that feeds --reward-settings."))
+    d.text(s, "python scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --hd3 --timesteps 12000 --n-envs 8 ...\n"
+              "python scripts/train_sac.py ... --corners all --resume reports/sac-ihp-hd3/sac_final.zip --timesteps 8000\n"
+              "python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 --baseline reports/baseline-ihp-3000\n"
+              "python scripts/reward_from_feedback.py \"power matters much more than eye margin\" --output reports/reward.json",
+           Inches(0.4), Inches(1.3), Inches(12.5), Inches(1.45), size=10.5, mono=True, fill=TERM_BG, color=TERM_FG, wrap=False)
+    d.text(s, "* AutoAnalog-RL sized CTLE\n* model source: ihp_ngspice\n* W_in = 2.01908e-05\n* R_load = 1000\n* I_bias = 0.000930072\n* R_s = 260.642\n* C_s = 3.2956e-13\n.param VDD=1.2\nX1 outP inP sourceP 0 sg13_lv_nmos W=2.01908e-05 L=0.13u\nX2 outN inN sourceN 0 sg13_lv_nmos W=2.01908e-05 L=0.13u\nRdegP sourceP tail 260.642\n...",
+           Inches(0.4), Inches(3.0), Inches(5.6), Inches(3.6), size=10.5, mono=True, fill=LIGHT)
+    d.text(s, "sized_ctle.sp — the deliverable schematic", Inches(0.4), Inches(6.6), Inches(5.6), Inches(0.35), size=11, color=GREY)
     d.bullets(s, [
-        "--spec nyquist_frequency_hz=1.25e9 → PCIe Gen 1 (2.5 Gbps): re-derives measurement frequency, UI, transient step, channel pole",
-        "2.5 GHz design at 1.25 GHz: 2.87 dB — fails",
-        "Resume policy, 3k steps: 96.5% feasible, 20/20 rollouts, median 2 steps",
-        "Best design: 5.23 dB @ 1.25 GHz, 0.350 V / 0.94 UI, 1.28 mW, HD3 −70.9 dB, 45/45",
-        "R_s 182 → 365 Ω, C_s 522 → 503 fF: the zero moves down in frequency",
-    ], Inches(0.5), Inches(2.0), Inches(6.2), Inches(4.5), size=14)
-    d.text(s, "Whole equalizer: CTLE + DFE tap", Inches(6.9), Inches(1.4), Inches(6), Inches(0.5), size=20, color=NAVY, bold=True)
-    d.image(s, FIG / "eye_diagram_equalizer.png", Inches(7.4), Inches(1.95), height=Inches(3.6))
-    d.text(s, "6-value action; post-DFE eye (measured against the transmitted bits) drives the reward. Training holds 0.51 V post-DFE vs ~0.35 V CTLE-only; rollouts 20/20, tap +0.062 opens 0.325 → 0.355 V with zero bit errors.",
-           Inches(6.9), Inches(5.7), Inches(6.0), Inches(1.2), size=12, color=GREY)
+        "validation.json — every gate result, 45-corner PVT, HD3, noise, area",
+        "steps.csv / monitor files / checkpoints — the whole training trajectory",
+        "budget_curve, eye, AC, PVT plots — PNG + CSV",
+        "evaluation.json — rollouts, steps to feasibility, per-corner breakdown",
+        "reward.json — weights from plain-language feedback (LLM frontend)",
+        "59 tests run without ngspice: python -m pytest -q",
+    ], Inches(6.4), Inches(3.0), Inches(6.6), Inches(3.8), size=13)
 
-    # 12 LLM frontend --------------------------------------------------------------
-    s = d.slide("LLM frontend: plain-language feedback → reward weights", notes=(
-        "The bonus item. An engineer types what they care about; the script turns it into the reward's per-spec weights, the "
-        "power charge and the margin bonus. Claude produces them as structured JSON when credentials exist; a context-aware keyword "
-        "parser is the offline fallback so the loop never blocks. The JSON is passed to training with --reward-settings and "
-        "applies from the start of that run or resumed stage."))
-    d.text(s, '> python scripts/reward_from_feedback.py "We are power constrained: current budget matters much more\n   than eye margin, and we don\'t care about linearity"\n\n'
-              '{ "weights": { "power": 3.0, "eye_vertical_v": 0.33, "hd3": 0.33, "peaking_boost": 1.0, ... },\n'
-              '  "efficiency_weight": 3.0, "margin_weight": 5.0,\n'
-              '  "rationale": "raised power x3; lowered eye_vertical_v x0.33; lowered hd3 x0.33" }\n\n'
-              '> python scripts/train_sac.py ... --reward-settings reports/reward_low_power.json',
-           Inches(0.5), Inches(1.5), Inches(12.3), Inches(3.0), size=13, mono=True, fill=RGBColor(0x0C, 0x1B, 0x2E), color=RGBColor(0xE6, 0xEE, 0xF8))
+    # 12 ----------------------------------------------------------------- 4:45-5:00
+    s = d.slide("Summary", "4:45 – 5:00", notes=(
+        "4:45–5:00 — Closing. Show: final result summary / repository.\n\n"
+        "To summarize, AutoAnalog-RL combines reinforcement learning, SPICE simulation and PVT-aware validation to automatically size a high-speed receiver equalizer.\n\n"
+        "Our trained policy achieves feasible designs in only a few simulations, passes the required circuit specifications and all 45 PVT corners, and produces a corresponding sized netlist.\n\n"
+        "Thank you."))
+    d.stat(s, "2 – 3 sims", "from a random start to every spec met", Inches(0.6), Inches(1.5), width=Inches(3.9))
+    d.stat(s, "45 / 45", "PVT corners, every design", Inches(4.7), Inches(1.5), width=Inches(3.9))
+    d.stat(s, "sized_ctle.sp", "an actual circuit, not a score", Inches(8.8), Inches(1.5), width=Inches(3.9))
     d.bullets(s, [
-        "Claude (Anthropic SDK, schema-validated JSON) when credentials are present; keyword parser offline — the loop never blocks on an API",
-        "Reward: −Σ wᵢ·vᵢ − w_eff·(P/P_max) + [feasible]·(bonus + w_margin·margin) — every wᵢ is what the frontend adjusts",
-        "Applies at the start of a run or a resumed curriculum stage; re-weighting mid-run is the next step",
-    ], Inches(0.5), Inches(4.8), Inches(12.3), Inches(2.0), size=14)
-
-    # 13 Bugs found ---------------------------------------------------------------
-    s = d.slide("What the agent found: two measurement flaws the manual flow lived with", notes=(
-        "Two things worth being candid about. First, HD3 had been reported as failing at minus 25 dB in every earlier version of "
-        "this project. That was spectral leakage: the FFT analysed two and a half cycles with a rectangular window. With an "
-        "integer-cycle Hann window the same designs measure minus 58 dB, 28 dB of margin. The agent exposed it by being unable "
-        "to move the number. Second, the DFE eye was labelled by the DFE's own decisions, so a large tap could fake a wide eye; "
-        "the equalizer agent found that in two thousand steps and pushed the tap to its bound while the receiver got 54 of 127 "
-        "bits wrong. The eye is now measured against the transmitted bits. Reward hacking as a bug detector."))
-    d.table(s, [
-        ["Flaw", "Symptom", "Cause", "Fix", "After"],
-        ["HD3 measurement", "−25 dB 'fail' on every design; RL could not move it past −26", "2.5-cycle rectangular FFT window → fundamental leakage in the 300 MHz bin", "integer-cycle Hann window (unit-tested on a synthetic −40 dB tone)", "−58 to −72 dB, 28 dB margin"],
-        ["DFE eye metric", "agent drove the tap to +0.5 and reported a 0.70 V eye", "eye labelled by the DFE's own decisions — the tap separates the classes by itself", "eye against the transmitted PRBS bits; bit errors counted; zero eye on any error", "54/127 errors exposed; honest DFE still +39% eye"],
-    ], Inches(0.4), Inches(1.5), Inches(12.5), col_widths=[Inches(1.6), Inches(2.8), Inches(3.1), Inches(3.0), Inches(2.0)], size=12)
-    d.text(s, "Both fixed, unit-tested, and every number in the report uses the corrected measurements. Noise was cross-checked against ngspice's own band integral (0.2420 vs 0.2417 mV rms).",
-           Inches(0.5), Inches(3.6), Inches(12.3), Inches(0.9), size=14, color=NAVY)
-    d.stat(s, "−25 → −58 dB", "HD3, same design, correct window", Inches(0.6), Inches(4.8), width=Inches(3.9))
-    d.stat(s, "54 / 127", "bit errors behind the 'best' DFE eye", Inches(4.7), Inches(4.8), width=Inches(3.9))
-    d.stat(s, "+39 %", "honest one-tap DFE eye gain", Inches(8.8), Inches(4.8), width=Inches(3.9), color=GREEN)
-    d.text(s, "Reward hacking as a bug detector: an optimiser that can exploit a metric will find its flaws first.",
-           Inches(0.5), Inches(6.45), Inches(12.3), Inches(0.5), size=15, color=GREY, bold=True, align=PP_ALIGN.CENTER)
-
-    # 14 Compliance -----------------------------------------------------------------
-    s = d.slide("Against the brief: every specification, every deliverable", notes=(
-        "Mapping the brief line by line. Nyquist, peaking with tunability, the CTLE with variable degeneration, the one-tap DFE, "
-        "HD3, noise, power, area, eye, PVT, zero human intervention and faster than sweeping, the Python framework with specs in "
-        "and schematic out, and the LLM bonus: all delivered. The one change from our own synopsis is the PDK: IHP instead of "
-        "sky130, which the brief allows; we switched because the sky130 flow was too slow for an RL loop."))
-    d.table(s, [
-        ["Brief", "Ours", "Result", ""],
-        ["Nyquist 2.5 GHz, peaking 3–12 dB tunable 1.25–2.5 GHz", "spec input", "4.5 dB @ 2.5 GHz; 5.23 dB @ 1.25 GHz", "✓"],
-        ["1-stage CTLE, variable Rs/Cs; 1-tap DFE; NRZ", "in the action", "yes; tap sized by the agent", "✓"],
-        ["HD3 < −30 dB", "enforced", "−61.9 dB", "✓"],
-        ["Noise < 1.5 mV rms", "reported", "0.242 mV rms", "✓"],
-        ["Power < 15 mW · Area < 0.05 mm²", "≤ 2 mW · reported", "1.12 mW · 1.1e-5 mm² (estimate)", "✓"],
-        ["Eye > 100 mV, > 0.4 UI", "≥ 0.25 V, ≥ 0.7 UI", "0.370 V, 0.90 UI", "✓"],
-        ["PVT TT/SS/FF/SF/FS, ±5%, 0–125 °C", "trained across + verified", "45/45", "✓"],
-        ["Zero human intervention, faster than sweeping", "2–3 sims from a random start", "random 13, CMA-ES 9", "✓"],
-        ["Python RL framework, specs in, SPICE in loop, schematic out", "--spec, ngspice gates, sized_ctle.sp", "yes", "✓"],
-        ["Bonus: LLM human interaction", "reward_from_feedback.py", "yes", "✓"],
-        ["Open PDK: IHP 130 nm or sky130", "IHP sg13g2 (synopsis said sky130)", "PSP103 via OSDI, 0.6 s/step", "✓"],
-    ], Inches(0.4), Inches(1.4), Inches(12.5), col_widths=[Inches(4.6), Inches(3.2), Inches(3.9), Inches(0.8)], size=12)
-
-    # 15 Deliverables + next -----------------------------------------------------------
-    s = d.slide("Deliverables, limitations, next steps", notes=(
-        "The deliverables: the repository with 59 tests, the 12-page report, every run's artifacts including the sized netlist, "
-        "and the live demo. Limitations we state openly: the DFE in the loop is behavioural, area is a first-order estimate, and "
-        "the curriculum policy is corner-blind. Next steps in order of value: the analog slicer inside the transient gate, "
-        "corner-aware observations, a closed LLM loop, and a sky130 backend if a future round needs it. Thank you."))
-    d.text(s, "Deliverables", Inches(0.5), Inches(1.4), Inches(4), Inches(0.5), size=20, color=NAVY, bold=True)
-    d.bullets(s, [
-        "github.com/Foolish-Genius/al_nebula — 59 tests, reproducible commands",
-        "Report (12 pp, PDF + LaTeX) with every number traceable to an artifact",
-        "sized_ctle.sp + validation.json for every design; checkpoints; 45-corner PVT",
-        "scripts/demo_rollout.py — the live demo",
-    ], Inches(0.5), Inches(2.0), Inches(4.2), Inches(4.5), size=13)
-    d.text(s, "Limitations", Inches(4.9), Inches(1.4), Inches(4), Inches(0.5), size=20, color=NAVY, bold=True)
-    d.bullets(s, [
-        "DFE in the loop is behavioural; analog slicer not simulated end to end",
-        "Area: first-order device estimate, not post-layout",
-        "Curriculum policy is corner-blind (robust, not corner-aware)",
-        "PDK: IHP, not the synopsis' sky130 (allowed by the brief)",
-    ], Inches(4.9), Inches(2.0), Inches(4.0), Inches(4.5), size=13)
-    d.text(s, "Next steps", Inches(9.1), Inches(1.4), Inches(4), Inches(0.5), size=20, color=NAVY, bold=True)
-    d.bullets(s, [
-        "Analog DFE slicer inside the transient gate",
-        "Corner-aware observation",
-        "Closed LLM loop: train → read report → re-weight → resume",
-        "BO baseline + wall-clock vs. manual sweep",
-        "sky130 backend if required",
-    ], Inches(9.1), Inches(2.0), Inches(4.0), Inches(4.5), size=13)
-    d.text(s, "Thank you — questions?", Inches(0.5), Inches(6.2), Inches(12), Inches(0.6), size=22, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
+        "SAC agent + ngspice gates in fail-fast order, on the real IHP sg13g2 PSP103 models",
+        "Eye 0.32–0.37 V after a −10 dB channel, 3–12 dB peaking, ~1 mW, HD3 ≈ −60 dB, noise 0.24 mV rms",
+        "Curriculum across 45 corners · tunable Nyquist 1.25–2.5 GHz · one-tap DFE in the action · LLM reward frontend",
+        "Random search ~13 and CMA-ES ~9 simulations per feasible design; the policy 2–3, with no per-instance search",
+        "github.com/Foolish-Genius/al_nebula — report, deck, 59 tests, every artifact",
+    ], Inches(0.6), Inches(3.3), Inches(12.2), Inches(3.0), size=15)
+    d.text(s, "Thank you", Inches(0.6), Inches(6.3), Inches(12.2), Inches(0.6), size=24, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
 
     return d.prs
 
