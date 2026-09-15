@@ -73,7 +73,7 @@ channel (about -10 dB at Nyquist) that the original evidence did not include,
 and the AC-only search cannot see the eye. The RL policy in the next section,
 which is rewarded on the post-channel eye, closes exactly this gap. The noise
 result is integrated from the ngspice `inoise_spectrum` vector using the RMS
-density equation.
+density equation and cross-checked against ngspice's `inoise_total`.
 
 ## RL Result on the IHP Models
 
@@ -130,7 +130,11 @@ calibrated to while staying above the ~175 mV PCIe Gen 2 receiver eye.
    window; the earlier -25 dB "failure" was spectral leakage in the
    measurement (see the evidence section). The stimulus is a fixed 100 mV
    differential tone; HD3 at larger swings has not been characterised.
-3. Noise extraction requires final input-referred normalization and a raw-vector sanity check before it can qualify the specification.
+3. Noise is qualified: the gate integrates ngspice's input-referred
+   `inoise_spectrum` (V/sqrt(Hz), parsed by column name) over 10 MHz to
+   5 GHz and reports 0.2420 mV rms; ngspice's own band integral
+   (`inoise_total`, now recorded alongside) gives 0.2417 mV rms, the
+   difference being trapezoid error on the log-spaced grid.
 4. Area is a first-order active-device geometry estimate, not a post-layout area result.
 5. SAC on the generic Level-1 model is solved: with the margin bonus and
    hold-on-success episodes the policy reaches a fully feasible design from a

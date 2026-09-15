@@ -210,3 +210,26 @@ def test_hd3_from_waveform_recovers_known_distortion():
     assert SpiceEvaluator.hd3_from_waveform(time_s, pure) < -80.0
     with pytest.raises(ValueError):
         SpiceEvaluator.hd3_from_waveform(np.linspace(0.0, 10e-9, 100), np.zeros(100))
+
+
+def test_noise_spectrum_is_parsed_by_column_name():
+    import numpy as np
+    from spice.spice_engine import SpiceEvaluator
+
+    output = """
+Index   frequency       inoise_spectrum onoise_spectrum
+--------------------------------------------------------------------------------
+0	1.000000e+07	7.0e-09	8.7e-09
+1	1.000000e+08	5.0e-09	8.5e-09
+2	1.000000e+09	3.0e-09	8.3e-09
+
+inoise_total = 2.4e-04
+onoise_total = 6.2e-04
+"""
+    frequency, density = SpiceEvaluator._parse_noise_spectrum(output, "inoise_spectrum")
+    assert frequency.tolist() == [1e7, 1e8, 1e9]
+    assert density.tolist() == [7e-9, 5e-9, 3e-9]
+    _, onoise = SpiceEvaluator._parse_noise_spectrum(output, "onoise_spectrum")
+    assert onoise.tolist() == [8.7e-9, 8.5e-9, 8.3e-9]
+    with pytest.raises(ValueError):
+        SpiceEvaluator._parse_noise_spectrum(output, "missing_column")
