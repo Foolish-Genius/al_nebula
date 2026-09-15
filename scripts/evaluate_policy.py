@@ -251,6 +251,7 @@ def main() -> None:
             transient_time_s=transient_result["time_s"],
             transient_output_v=transient_result["output_v"],
             pvt_results=pvt_results,
+            netlist=evaluator.sized_netlist(design, dfe_tap=equalizer_result.get("dfe_tap")),
         )
 
     (output_dir / "evaluation.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
