@@ -291,13 +291,28 @@ starting designs, then validates the best design with the full gate set and all 
 <figcaption>Figure 3. Learning curves for the IHP runs (500-step moving average): reward per step, fraction of steps meeting every specification, and post-channel eye height against the 0.25 V target. All runs converge within about 2k steps; the curriculum stage starts converged because it resumes the nominal policy.</figcaption>
 </figure>
 
-<p><b>Against random search.</b> A 3000-design random search on the same models and reward
-(<code>scripts/baseline_random.py</code>) satisfies every specification 7.9% of the time (238/3000); its first feasible
-design is number 27, so about thirteen simulations per feasible design. The policies reach a feasible design in a median
-of two to three simulations from an arbitrary start; at the same 49&ndash;53 simulation budget their best reward is
-20.7&ndash;20.8 against 19.65 for random search (Figure 4). Random search's best over all 3000 designs (21.12) edges the
-policies' best within their short rollouts, at sixty times the budget. The AC-only 100-candidate bounded search of the
-pre-ML pipeline, which selects on peaking alone, produces a design with a post-channel eye of only 0.160 V.</p>
+<h3>6.1 Baselines: random search and CMA-ES</h3>
+<p>Two baselines run against the same models and reward. Random search (<code>scripts/baseline_random.py</code>, 3000
+designs): 7.9% of designs satisfy every specification (238/3000) and the first feasible one is design 27. CMA-ES
+(<code>scripts/baseline_cmaes.py</code>, population 8, &sigma;<sub>0</sub> = 0.5 in the normalised box): three
+400-evaluation trials from the box centre and six 96-evaluation trials from random starting designs, the latter matching
+how the policy is rolled out (Table 5, Figure 4).</p>
+<table>
+<tr><th>Method (from random starting designs unless noted)</th><th class="num">First feasible design, median / worst</th><th class="num">Best reward at 50 sims</th><th>Cost per new instance</th></tr>
+<tr><td>SAC policy, deterministic rollouts (84 rollouts over 4 evaluations)</td><td class="num"><b>2&ndash;3 / 5</b></td><td class="num">20.7&ndash;20.8</td><td>2&ndash;3 simulations, no search</td></tr>
+<tr><td>CMA-ES, random start (6 trials)</td><td class="num">9 / 24</td><td class="num">20.50 (mean)</td><td>~10 simulations to feasible; 400 to refine</td></tr>
+<tr><td>CMA-ES from the box centre (3 trials)</td><td class="num">2&ndash;5</td><td class="num">20.8&ndash;21.1; 21.3&ndash;21.4 at 400</td><td>400 simulations per design</td></tr>
+<tr><td>Random search</td><td class="num">27</td><td class="num">19.65</td><td>~13 simulations per feasible design</td></tr>
+</table>
+<p class="small">Table 5. Simulation cost to a feasible design and reward at equal budget, policy versus baselines.</p>
+<p>CMA-ES is a strong per-instance optimiser on this five-dimensional problem: given 400 simulations it reaches the same
+reward the policies reach during training (21.2&ndash;21.6), and from the fortuitously near-feasible box centre it finds a
+feasible design in a handful of evaluations. The policy's advantage is amortisation and robustness: after one training
+run it sizes a new instance &mdash; a random starting design, a random PVT corner, a re-weighted reward &mdash; in two to three
+simulations with no per-instance search, three to four times fewer than CMA-ES from the same starts and about ten times
+fewer than random sampling. Refinement inside the feasible set is what the hold-on-success training phase does; the
+rollouts reported here stop at the first feasible step. The AC-only 100-candidate bounded search of the pre-ML pipeline,
+which selects on peaking alone, produces a design with a post-channel eye of only 0.160 V.</p>
 
 <div class="two">
 <figure><img src="{{fig:reports/eval-ihp-v1/budget_curve.png}}" alt="budget curve"><figcaption>Figure 4. Best reward found versus number of simulated designs, policy rollouts against random search (seed 1).</figcaption></figure>
@@ -352,17 +367,17 @@ python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --mar
 python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 --baseline reports/baseline-ihp-3000
 # pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
 python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission</pre>
-<p>Table 5 lists the artifacts behind every number in this report.</p>
+<p>Table 6 lists the artifacts behind every number in this report.</p>
 <table>
 <tr><th>Artifact</th><th>Contents</th></tr>
 <tr><td><code>reports/sac-ihp-*/</code></td><td>per-step CSV, SB3 monitor files, checkpoints every 4k steps, final model, config.json, validation.json, plots, sized netlist</td></tr>
 <tr><td><code>reports/eval-ihp-*/</code></td><td>evaluation.json (rollout statistics, per-corner breakdown, comparison), rollouts.csv, budget_curve.png/csv, validation plots, sized netlist</td></tr>
-<tr><td><code>reports/baseline-ihp-3000/</code></td><td>3000 random designs with rewards and metrics; best design validated</td></tr>
+<tr><td><code>reports/baseline-ihp-3000/</code>, <code>reports/cmaes-ihp-*/</code></td><td>random-search and CMA-ES baselines with per-evaluation rewards and metrics; best designs validated</td></tr>
 <tr><td><code>reports/runs/ihp-submission-2026-09-15/</code></td><td>pre-ML bounded search with every gate, regenerated on the Windows toolchain</td></tr>
 <tr><td><code>reports/screenshots/</code></td><td>live training captures and learning curves taken every 15 minutes during training</td></tr>
 <tr><td><code>docs/submission_report.md</code>, <code>README.md</code></td><td>technical report and run instructions in the repository</td></tr>
 </table>
-<p class="small">Table 5. Evidence artifacts.</p>
+<p class="small">Table 6. Evidence artifacts.</p>
 
 <h2>10. Measurement findings</h2>
 <p>Two measurement flaws survived the manual flow and were exposed when the agent optimised against them. Both are fixed
