@@ -530,29 +530,27 @@ class SpiceEvaluator:
             return result
 
     def run_noise(self, actions: np.ndarray) -> dict[str, Any]:
-        """Integrate output-noise density over the 10 MHz to 5 GHz band."""
+        """Integrate input-referred noise density over the 10 MHz to 5 GHz band."""
         result = {"noise_vrms": float("nan"), "noise_valid": False, "error": None}
         try:
             parameters = self.map_actions(actions)
             netlist = self._inject_parameters(parameters)
             with tempfile.TemporaryDirectory(prefix="autoanalog-noise-") as directory:
                 output = self._run_ngspice(self._with_commands(netlist, self._noise_commands()), Path(directory) / "noise")
-            rows = []
-            for line in output.splitlines():
-                fields = line.split()
-                if len(fields) >= 3:
-                    try:
-                        rows.append((float(fields[1]), float(fields[2])))
-                    except ValueError:
-                        continue
-            data = np.asarray(rows, dtype=float)
-            if data.size == 0 or np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) <= 0):
-                raise ValueError("missing or invalid noise data")
+            frequency_hz, density = self._parse_noise_spectrum(output, "inoise_spectrum")
             # ngspice reports spectral density in V/sqrt(Hz); integrate its
             # square over frequency to obtain RMS input-referred noise.
-            density = np.maximum(data[:, 1], 0.0)
-            noise_vrms = float(np.sqrt(np.trapezoid(density**2, data[:, 0])))
-            return {"noise_vrms": noise_vrms, "noise_valid": bool(np.isfinite(noise_vrms)), "error": None}
+            noise_vrms = float(np.sqrt(np.trapezoid(np.maximum(density, 0.0) ** 2, frequency_hz)))
+            # ngspice's own band integral (noise2 plot) is kept as a cross-check;
+            # the two agree to the trapezoid error on the log-spaced grid.
+            match = re.search(r"inoise_total\s*=\s*([-+0-9.eE]+)", output)
+            ngspice_total = float(match.group(1)) if match else float("nan")
+            return {
+                "noise_vrms": noise_vrms,
+                "noise_vrms_ngspice_total": ngspice_total,
+                "noise_valid": bool(np.isfinite(noise_vrms)),
+                "error": None,
+            }
         except (OSError, ValueError, KeyError, subprocess.SubprocessError, RuntimeError) as error:
             result["error"] = str(error)
             return result
@@ -890,7 +888,36 @@ class SpiceEvaluator:
 
     @staticmethod
     def _noise_commands() -> str:
-        return "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\nsetplot noise1\nprint all\n.endc\n"
+        return (
+            "\n.control\nnoise v(outP,outN) Vinp dec 50 10Meg 5Gig\n"
+            "setplot noise1\nprint all\n"
+            "setplot noise2\nprint inoise_total onoise_total\n.endc\n"
+        )
+
+    @staticmethod
+    def _parse_noise_spectrum(output: str, column: str) -> tuple[np.ndarray, np.ndarray]:
+        """Return (frequency, density) for one named column of ngspice's noise1 table."""
+        lines = output.splitlines()
+        header = next((i for i, line in enumerate(lines) if re.match(r"\s*Index\s+frequency", line)), None)
+        if header is None:
+            raise ValueError("missing noise table")
+        columns = lines[header].split()
+        if column not in columns:
+            raise ValueError(f"noise table has no {column} column")
+        index = columns.index(column)
+        rows = []
+        for line in lines[header + 1:]:
+            fields = line.split()
+            if len(fields) < len(columns):
+                continue
+            try:
+                rows.append((float(fields[1]), float(fields[index])))
+            except ValueError:
+                continue
+        data = np.asarray(rows, dtype=float)
+        if data.size == 0 or np.any(~np.isfinite(data)) or np.any(np.diff(data[:, 0]) <= 0):
+            raise ValueError("missing or invalid noise data")
+        return data[:, 0], data[:, 1]
 
     @staticmethod
     def _prbs_bits(length: int = 127) -> np.ndarray:
