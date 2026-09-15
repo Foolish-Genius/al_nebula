@@ -136,3 +136,10 @@ one-tap DFE; `run_linearity()`, `run_noise()`, `estimate_area()`, and
 ngspice executable (on Windows use `ngspice_con.exe`) or pass `--ngspice` to
 the scripts. The active submission report is generated under
 `reports/runs/ihp-submission/`.
+
+## Report
+
+`docs/report/report.html` is the submission report; `python scripts/build_report.py`
+renders it to `docs/report/AutoAnalog-RL_report.pdf` with Chrome. `docs/report/report.tex`
+is the same report in LaTeX (figures in `docs/report/figures/`); build it with
+`tectonic report.tex` or `pdflatex`/`xelatex` twice, or open it in Overleaf as-is.
