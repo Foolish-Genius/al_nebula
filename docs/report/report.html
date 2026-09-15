@@ -5,7 +5,7 @@
 <title>AutoAnalog-RL: Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning</title>
 <style>
   @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
-  html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.42; color: #1a1a1a; }
+  html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10.2pt; line-height: 1.38; color: #1a1a1a; }
   body { margin: 0; }
   h1 { font-size: 22pt; margin: 0 0 6pt; line-height: 1.2; }
   h2 { font-size: 15pt; margin: 18pt 0 6pt; border-bottom: 1.5px solid #2b5797; padding-bottom: 2pt; color: #163a6b; page-break-after: avoid; }
@@ -465,10 +465,7 @@ device-level knob; corner-aware observations; Bayesian-optimisation and CMA-ES b
 wall-clock comparison against a manual sweep; a closed LLM loop that reads each validation report and proposes the next
 reward adjustment; and, if a future round requires it, the sky130 backend.</p>
 
-<h2>Appendix A. Sized netlist of the curriculum policy's best design (excerpt)</h2>
-<pre style="font-size:7.8pt;line-height:1.25">{{include:reports/eval-ihp-pvt/sized_ctle.sp|30}}</pre>
-
-<h2>Appendix B. Training configuration</h2>
+<h2>Appendix A. Training configuration</h2>
 <table>
 <tr><th>Setting</th><th>Value</th></tr>
 <tr><td>Algorithm</td><td>SAC, MlpPolicy (stable-baselines3 2.9.0, torch 2.14 CUDA)</td></tr>
@@ -480,8 +477,11 @@ reward adjustment; and, if a future round requires it, the sky130 backend.</p>
 <tr><td>Entropy coefficient</td><td>automatic, initial 0.1</td></tr>
 <tr><td>Warm-up</td><td>500 random steps (none when resuming)</td></tr>
 <tr><td>Throughput</td><td>0.5&ndash;0.7 s per environment step on a 12-core laptop; 12k steps in about 2 h</td></tr>
-<tr><td>Tests</td><td>58, run without ngspice</td></tr>
+<tr><td>Tests</td><td>59, run without ngspice</td></tr>
 </table>
+
+<h2>Appendix B. Sized netlist of the curriculum policy's best design (excerpt)</h2>
+<pre style="font-size:7.8pt;line-height:1.25;page-break-inside:auto">{{include:reports/eval-ihp-pvt/sized_ctle.sp|24}}</pre>
 
 </body>
 </html>
