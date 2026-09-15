@@ -41,9 +41,10 @@ def inline(template: str) -> str:
         text = (ROOT / path).read_text(encoding="utf-8")
         if limit:
             lines = text.splitlines()
-            text = "
-".join(lines[: int(limit)]) + (f"
-... ({len(lines) - int(limit)} more lines in {path})" if len(lines) > int(limit) else "")
+            kept = "\n".join(lines[: int(limit)])
+            if len(lines) > int(limit):
+                kept += f"\n... ({len(lines) - int(limit)} more lines in {path})"
+            text = kept
         return html.escape(text)
 
     rendered = re.sub(r"\{\{fig:([^}]+)\}\}", figure, template)
