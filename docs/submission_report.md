@@ -66,7 +66,7 @@ Linux run (`reports/runs/ihp-submission/`) reproduces to all printed digits.
 | DC operating point | valid | pass |
 | HF peaking at 2.5 GHz Nyquist | 7.527 dB | pass, 3 to 12 dB target |
 | Power | 0.743 mW | pass, below 2 mW |
-| Eye height after -10 dB channel | 0.160 V (0.264 V with 1-tap DFE) | fail, 0.25 V target |
+| Eye height after -10 dB channel | 0.160 V (0.310 V with the swept 1-tap DFE, no bit errors) | fail, 0.25 V target |
 | Eye width after channel | 0.58 UI | fail, 0.7 UI target |
 | PVT corners | 45/45 simulated and passing | pass |
 | Area estimate | 1.09e-05 mm2 | pass, first-order estimate |
@@ -135,7 +135,18 @@ corner from the metrics it observes. {PVT_TEXT}
 `--equalizer` extends the action to six values: the five CTLE parameters and
 the one-tap DFE weight in [-0.5, 0.5]. The DFE is applied to the CTLE's
 post-channel samples whenever a waveform exists, and the post-DFE eye height
-drives the reward. {EQ_TEXT}
+drives the reward.
+
+The first equalizer run exposed a second measurement flaw: the DFE eye was
+labelled by the DFE's own decisions, so a large tap separated the two
+decision classes by itself. The agent found this within 2k steps, drove the
+tap to its +0.5 bound and reported a 0.70 V eye on a design whose receiver
+decides 54 of 127 bits wrongly. The eye is now measured against the
+transmitted PRBS bits (`rl.dfe.dfe_eye_against_bits`: correlation-aligned
+UI-centre samples, slicer at the midpoint of the two symbol populations,
+DFE fed its own decisions, bit errors counted, zero eye on any error). With
+the honest metric a one-tap DFE still helps: the CTLE-only policy design
+goes from 0.327 V to 0.455 V at tap +0.075 with no errors. {EQ_TEXT}
 
 ### LLM frontend for the reward
 
