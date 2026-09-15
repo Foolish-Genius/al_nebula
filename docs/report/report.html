@@ -54,7 +54,7 @@
     five-parameter CTLE action space (six with the DFE tap). Training happens on the real IHP sg13g2 PSP103 transistor
     models, compiled from Verilog-A to OSDI and run eight simulators wide on a laptop. The trained policy reaches a design
     that passes every measured specification &mdash; peaking, power, post-channel eye height and width, HD3, noise and all
-    45 process/voltage/temperature corners &mdash; in a median of two simulations from a random starting point, where a
+    45 process/voltage/temperature corners &mdash; in a median of two to three simulations from a random starting point, where a
     random search needs about thirteen and an AC-only bounded search never reaches the eye specification. A two-stage
     curriculum makes the same policy corner-robust (24/24 rollouts feasible at random PVT corners), an LLM frontend turns
     plain-language design feedback into reward weights, and the sized netlist is emitted with every design. Along the way
@@ -77,7 +77,7 @@ as the output. Table 1 lists each promise and its status in this submission.</p>
 <tr><th>Synopsis promise</th><th>Status in this submission</th></tr>
 <tr><td>PCIe Gen 2 (5 Gbps) CTLE + 1-tap DFE sized with zero human intervention</td><td><span class="pass">Delivered.</span> SAC sizes the CTLE end to end; the DFE tap is either swept per design or sized by the agent (<code>--equalizer</code>). Section 7.</td></tr>
 <tr><td>Skywater 130 nm PDK</td><td><span class="fail">Changed</span> to the IHP sg13g2 130 nm PDK; reason in Section 3.</td></tr>
-<tr><td>Sample-efficient SAC agent</td><td><span class="pass">Delivered.</span> Converges within ~2k environment steps; median 2 simulations to a feasible design. Section 6.</td></tr>
+<tr><td>Sample-efficient SAC agent</td><td><span class="pass">Delivered.</span> Converges within ~2k environment steps; median 2&ndash;3 simulations to a feasible design. Section 6.</td></tr>
 <tr><td>Headless Python-to-ngspice pipeline</td><td><span class="pass">Delivered</span>, including a Windows toolchain for the PSP103 OSDI models. Section 4.</td></tr>
 <tr><td>Bounded 5-parameter action space, fail-fast DC checks</td><td><span class="pass">Delivered.</span> Section 5.</td></tr>
 <tr><td>Curriculum learning across 45 PVT corners</td><td><span class="pass">Delivered.</span> Nominal stage then corner-randomised stage; 24/24 rollouts feasible at random corners. Section 7.</td></tr>
@@ -280,9 +280,9 @@ starting designs, then validates the best design with the full gate set and all 
 <tr><th>Run</th><th class="num">Steps</th><th>Variant</th><th class="num">Training feasible</th><th class="num">Rollouts feasible</th><th>Steps to feasible (median / worst)</th><th>Best design: eye, power, HD3, PVT</th></tr>
 <tr><td>sac-ihp-v1 (seed 1)</td><td class="num">30k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>2 / 4</td><td>0.327 V, 1.22 mW, &minus;57.8 dB, 45/45</td></tr>
 <tr><td>sac-ihp-v1-s2 (seed 2)</td><td class="num">12k</td><td>&ndash;</td><td class="num">95.5%</td><td class="num">20 / 20</td><td>3 / 4</td><td>0.316 V, 1.22 mW, &minus;57.7 dB, 45/45</td></tr>
-<tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">96.2%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.344 V, 1.01 mW, &minus;68.2 dB, 45/45</td></tr>
-<tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.2%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
-<tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">92.2%</td><td class="num">20 / 20</td><td>3 / 5</td><td>0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, &minus;71.6 dB, 45/45</td></tr>
+<tr><td>sac-ihp-hd3</td><td class="num">12k</td><td>HD3 enforced in the reward</td><td class="num">95.6%</td><td class="num">20 / 20</td><td>2.5 / 4</td><td>0.335 V, 1.24 mW, &minus;58.1 dB, 45/45</td></tr>
+<tr><td>sac-ihp-pvt (curriculum stage 2)</td><td class="num">+8k</td><td>resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced</td><td class="num">95.4%</td><td class="num">24 / 24 at random corners</td><td>2 / 4</td><td>0.370 V, 1.12 mW, &minus;61.9 dB, 45/45</td></tr>
+<tr><td>sac-ihp-eq (whole equalizer)</td><td class="num">8k</td><td>six-value action: CTLE + DFE tap; post-DFE eye drives the reward</td><td class="num">92.3%</td><td class="num">20 / 20</td><td>3 / 5</td><td>0.325 V raw, 0.355 V post-DFE (tap +0.062), 1.36 mW, &minus;71.6 dB, 45/45</td></tr>
 </table>
 <p class="small">Table 4. Training runs on the IHP sg13g2 PSP103 models. Every best design passes peaking, power, eye height and width, HD3, noise and all 45 corners.</p>
 
@@ -299,7 +299,7 @@ designs): 7.9% of designs satisfy every specification (238/3000) and the first f
 how the policy is rolled out (Table 5, Figure 4).</p>
 <table>
 <tr><th>Method (from random starting designs unless noted)</th><th class="num">First feasible design, median / worst</th><th class="num">Best reward at 50 sims</th><th>Cost per new instance</th></tr>
-<tr><td>SAC policy, deterministic rollouts (84 rollouts over 4 evaluations)</td><td class="num"><b>2&ndash;3 / 5</b></td><td class="num">20.7&ndash;20.8</td><td>2&ndash;3 simulations, no search</td></tr>
+<tr><td>SAC policy, deterministic rollouts (104 rollouts over 5 evaluations)</td><td class="num"><b>2&ndash;3 / 5</b></td><td class="num">20.5&ndash;20.8</td><td>2&ndash;3 simulations, no search</td></tr>
 <tr><td>CMA-ES, random start (6 trials)</td><td class="num">9 / 24</td><td class="num">20.50 (mean)</td><td>~10 simulations to feasible; 400 to refine</td></tr>
 <tr><td>CMA-ES from the box centre (3 trials)</td><td class="num">2&ndash;5</td><td class="num">20.8&ndash;21.1; 21.3&ndash;21.4 at 400</td><td>400 simulations per design</td></tr>
 <tr><td>Random search</td><td class="num">27</td><td class="num">19.65</td><td>~13 simulations per feasible design</td></tr>
@@ -365,6 +365,11 @@ python scripts/train_sac.py ... --corners all --resume reports/sac-ihp-hd3/sac_f
 python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 --invalid-penalty -10 \
   --evaluations 3000 --n-workers 8 --output-dir reports/baseline-ihp-3000
 python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 --baseline reports/baseline-ihp-3000
+# whole-equalizer sizing, CMA-ES baseline, reward weights from feedback
+python scripts/train_sac.py ... --equalizer --timesteps 8000 --output-dir reports/sac-ihp-eq
+python scripts/baseline_cmaes.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 --invalid-penalty -10 \
+  --evaluations 96 --x0 random --seed 10 --output-dir reports/cmaes-ihp-random-s10
+python scripts/reward_from_feedback.py "power matters more than eye margin" --output reports/reward.json
 # pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
 python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission</pre>
 <p>Table 6 lists the artifacts behind every number in this report.</p>
@@ -412,6 +417,7 @@ the lossy channel that the AC-only search cannot see &mdash; the gap the RL poli
 <li><b>DFE.</b> The DFE in the loop is the behavioural one-tap stage; the analog slicer in <code>DFE/</code> is not simulated end to end.</li>
 <li><b>Area</b> is a first-order active-device estimate, not a post-layout result.</li>
 <li><b>Corner awareness.</b> The curriculum policy is robust because it is trained blind across corners; adding the corner to the observation is a natural extension.</li>
+<li><b>LLM loop.</b> Reward weights from feedback apply at the start of a run or resumed stage, not while a run is in progress.</li>
 <li><b>Design space.</b> R<sub>load</sub> sits at its 1 k&Omega; bound in most designs; wider bounds and topology variants are the next lever.</li>
 </ul>
 <p>Next steps, in order of value: simulate the analog DFE slicer inside the transient gate so the tap becomes a

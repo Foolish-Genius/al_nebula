@@ -76,6 +76,7 @@ netlist `sized_ctle.sp`. To evaluate and compare:
 
 ```bash
 python scripts/baseline_random.py --evaluations 5000 --output-dir reports/baseline-5000
+python scripts/baseline_cmaes.py --evaluations 400 --x0 random --output-dir reports/cmaes-400  # pip install cma
 python scripts/evaluate_policy.py reports/sac-long --rollouts 20 --baseline reports/baseline-5000
 ```
 
