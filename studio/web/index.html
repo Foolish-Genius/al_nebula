@@ -317,7 +317,7 @@ function keywordSpec(text){
   else if (/typical|nominal/.test(t)) out.corner = "TT_1.00V_62.5C";
   else if (/random|any corner|surprise/.test(t)) out.corner = "random";
   SPEC.forEach(d => { if (out[d.key] != null){ out[d.key] = Math.min(d.max, Math.max(d.min, out[d.key])); said.push(d.label.toLowerCase() + " " + d.dir + " " + out[d.key].toFixed(d.dp) + " " + d.unit); } });
-  if (out.corner) said.push("corner " + out.corner.replace(/_/g, " "));
+  if (out.corner && MODE === "live") said.push("corner " + out.corner.replace(/_/g, " "));
   return {spec: out, note: said.length ? said.join(", ") : "nothing recognised — try numbers with units (0.3 V, 1.2 mW, 5 dB) or words like low power, wide eye, lossy, worst case"};
 }
 async function applyAsk(){
@@ -483,7 +483,7 @@ function renderKnobs(p, prev){
     return `<div class="knob"><div class="r"><span class="n">${k.replace("_"," ")}</span><span class="v">${FMT[k](v)}${d}</span></div>
       <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
   }).join("");
-  $("simTag").textContent = run && run.steps.length ? "sim " + run.steps.length : "start";
+  $("simTag").textContent = run && run.last ? "sim " + run.last.sim : run && run.steps.length ? "sim " + run.steps.length : "start";
 }
 function logLine(html, cls){
   const el = document.createElement("div"); el.innerHTML = html; if (cls) el.className = cls;
@@ -755,33 +755,40 @@ function drawAC(){
 }
 
 /* ------------------------------------------------------------ connection */
+async function probeHealth(ms){
+  // Never let a dead port hold the page hostage: whatever has not answered by `ms` is not live.
+  const probe = (async () => {
+    try {
+      const ctl = new AbortController();
+      setTimeout(() => ctl.abort(), ms);
+      const r = await fetch(API + "/api/health", {signal: ctl.signal, cache: "no-store"});
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  })();
+  return Promise.race([probe, new Promise(done => setTimeout(() => done(null), ms))]);
+}
 async function connect(){
-  let health = null;
-  try {
-    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 1500);
-    const r = await fetch(API + "/api/health", {signal: ctl.signal});
-    if (r.ok) health = await r.json();
-  } catch (e) {}
   const pill = $("pill");
+  const health = await probeHealth(1200);
   if (health && health.live){
     MODE = "live"; CLAUDE = !!health.claude;
     pill.className = "pill live"; pill.innerHTML = `<i></i><span>LIVE · ngspice + IHP PSP103</span>`;
-    buildCorners(health.corners);
-    $("modeNote").innerHTML = `Live: every run is a fresh ngspice rollout of the trained policy (${health.checkpoint}). ` +
-      (CLAUDE ? "Plain-language requests go to Claude." : "Plain-language requests use the keyword parser (set ANTHROPIC_API_KEY for Claude).");
+    buildCorners(health.corners); $("corner").disabled = false;
+    $("modeNote").innerHTML = `Live: every run is a fresh ngspice rollout of the trained policy (${health.checkpoint}). `
+      + (CLAUDE ? "Plain-language requests go to Claude." : "Plain-language requests use the keyword parser (set ANTHROPIC_API_KEY for Claude).");
   } else if (LIBRARY && LIBRARY.runs){
     MODE = "replay";
     pill.className = "pill replay"; pill.innerHTML = `<i></i><span>REPLAY · ${Object.keys(LIBRARY.runs).length} recorded runs</span>`;
-    buildCorners(null); $("corner").disabled = true;
+    $("corner").disabled = true;
     SPEC.forEach(d => { spec[d.key] = snap(d.key, spec[d.key]); });
-    $("modeNote").innerHTML = `Replay: runs recorded on the IHP models. Specs snap to the recorded grid and the corner is the one drawn at recording time. ` +
-      `For arbitrary specs run <code>python -m studio.server</code> and open <code>localhost:8765</code>.`;
+    $("modeNote").innerHTML = `Replay: runs recorded on the IHP models. Specs snap to the recorded grid and the corner is the one drawn at recording `
+      + `time. For arbitrary specs run <code>python -m studio.server</code> and open <code>localhost:8765</code>.`;
   } else {
     MODE = "offline"; pill.innerHTML = `<i></i><span>Offline</span>`; $("go").disabled = true;
-    buildCorners(null);
     $("modeNote").innerHTML = "No live engine and no recorded library. Run <code>python -m studio.server</code>.";
   }
   showSpec(); drawEye(); renderChecks();
+
   // #preset=2&run starts a take by itself; #ask=...; #tape opens the tape-out sheet when the run ends
   if (HASH.has("race")) $("race").checked = HASH.get("race") !== "0";
   if (HASH.has("preset")){ Object.assign(spec, PRESETS[+HASH.get("preset")].v);
@@ -793,7 +800,7 @@ async function connect(){
 const HASH = new URLSearchParams(location.hash.slice(1));
 
 /* ------------------------------------------------------------ boot */
-buildSliders(); renderKnobs(null); renderLanes(); renderChecks(); phase(0);
+buildSliders(); buildCorners(null); showSpec(); renderKnobs(null); renderLanes(); renderChecks(); phase(0);
 $("go").onclick = startRun;
 $("race").onchange = () => { if (!run || run.ended) renderLanes(); };
 $("askBtn").onclick = applyAsk;

@@ -65,7 +65,15 @@ def main() -> None:
     with ThreadPoolExecutor(args.workers) as pool:
         list(pool.map(record, todo))
 
-    runs = {key_of(values): json.loads((cache / f"{key_of(values)}.json").read_text(encoding="utf-8")) for values in combos}
+    # A partial library is useful too: the page falls back for a combination it has no run for.
+    runs = {}
+    for values in combos:
+        path = cache / f"{key_of(values)}.json"
+        if path.exists():
+            runs[key_of(values)] = json.loads(path.read_text(encoding="utf-8"))
+    missing = len(combos) - len(runs)
+    if missing:
+        print(f"note: {missing} specifications were not recorded; the page falls back for those")
     output = ROOT / args.output
     output.write_text(json.dumps({"grid": GRID, "runs": runs}, separators=(",", ":")), encoding="utf-8")
     print(f"wrote {output} ({output.stat().st_size // 1024} KB, {len(runs)} runs)")
