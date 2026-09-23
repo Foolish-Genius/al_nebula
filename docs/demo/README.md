@@ -1,4 +1,19 @@
+# AutoAnalog-RL demo pages
+
+Three pages, for three different jobs:
+
+| Page | Use it for |
+|---|---|
+| **`autoanalog_studio.html`** | the **interactive demo** — a judge names a specification and watches the agent size the circuit against real ngspice. See [`studio/README.md`](../../studio/README.md). |
+| `autoanalog_demo.html` | a 15-screen walkthrough of the whole project, light blue, advanced with Next |
+| `autoanalog_demo_dark.html` | the same walkthrough in a warm dark palette, plus two screens that open the architecture up layer by layer |
+
+The studio is the one to present. The walkthroughs are for explaining the project around it.
+
+---
+
 # AutoAnalog-RL walkthrough site
+
 
 `autoanalog_demo.html` is a self-contained, 15-screen walkthrough of the whole project — problem,
 specification, circuit, method, reward, agent, a **live rollout**, results, baselines, PVT,

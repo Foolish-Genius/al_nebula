@@ -47,6 +47,11 @@ Each run is cached in `reports/studio-library/` as it finishes, so an interrupte
 The grid is `GRID` in `build_library.py`: eye height, power, eye width and peaking. Widening it
 multiplies the recording time.
 
+The library is inlined, so the built page is about **7 MB** — instant from disk, but zip it or share
+a link rather than emailing it. Two thirds of that is the 44 grid points that are out of reach: those
+runs use the full simulation budget before giving up. Every eye diagram is the one belonging to its
+own simulation, which is why they are not thinned.
+
 ## Plain language
 
 With `ANTHROPIC_API_KEY` set, the plain-language box asks Claude to turn the request into
