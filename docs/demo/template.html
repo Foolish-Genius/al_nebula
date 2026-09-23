@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoAnalog-RL — live sizing</title>
+<style>
+  :root{
+    --bg:#070d18; --panel:#0e1726; --panel2:#131f33; --line:#1f3050;
+    --ink:#e8eef8; --dim:#8da2c0; --accent:#38bdf8; --ok:#34d399; --bad:#fb7185; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",Inter,system-ui,sans-serif;overflow:hidden}
+  #app{display:grid;grid-template-rows:auto 1fr auto;height:100vh;gap:10px;padding:12px 14px}
+
+  header{display:flex;align-items:center;gap:14px}
+  h1{margin:0;font-size:21px;letter-spacing:.2px}
+  h1 span{color:var(--accent)}
+  .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:3px 10px;font-size:11.5px;color:var(--dim)}
+  .chip b{color:var(--ink);font-weight:600}
+  .spacer{flex:1}
+  .controls{display:flex;align-items:center;gap:8px}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
+  .stepper{font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);min-width:74px;text-align:center}
+
+  main{display:grid;grid-template-columns:330px 1fr 380px;gap:10px;min-height:0}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+    display:flex;flex-direction:column;min-height:0}
+  .panel h2{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);font-weight:600}
+
+  /* knobs */
+  .knob{margin-bottom:9px}
+  .knob .row{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px}
+  .knob .name{color:var(--dim)}
+  .knob .val{font-variant-numeric:tabular-nums;font-weight:600}
+  .knob .delta{font-size:11px;margin-left:6px}
+  .up{color:var(--ok)} .down{color:var(--warn)}
+  .track{position:relative;height:6px;background:#0a1322;border:1px solid var(--line);border-radius:4px;margin-top:4px}
+  .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#1d6fa5,var(--accent));
+    border-radius:3px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+  .bounds{display:flex;justify-content:space-between;font-size:9.5px;color:#54688a;margin-top:2px}
+
+  /* specs */
+  .spec{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 0;border-bottom:1px solid #16243c}
+  .spec:last-of-type{border-bottom:none}
+  .spec .nm{font-size:13px}
+  .spec .tg{font-size:10.5px;color:var(--dim)}
+  .spec .vl{font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;text-align:right}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.4px}
+  .badge.ok{background:rgba(52,211,153,.16);color:var(--ok);border:1px solid rgba(52,211,153,.4)}
+  .badge.bad{background:rgba(251,113,133,.14);color:var(--bad);border:1px solid rgba(251,113,133,.4)}
+  .verdict{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
+  .verdict .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .verdict .sub{font-size:11.5px;color:var(--dim)}
+  .verdict.pass{border-color:rgba(52,211,153,.55);background:rgba(52,211,153,.08)}
+  .netlist{margin-top:10px;flex:1;min-height:0;display:flex;flex-direction:column;
+    background:#0a1322;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .netlist .nlhead{font-size:10.5px;color:var(--dim);padding:7px 10px 4px;letter-spacing:.3px}
+  .netlist pre{margin:0;padding:0 10px 10px;font-family:Consolas,monospace;font-size:11px;
+    line-height:1.45;color:#9fd8f5;overflow:auto;white-space:pre}
+  .netlist.pass{border-color:rgba(52,211,153,.4)}
+
+  canvas{width:100%;display:block}
+  .eyewrap{flex:1;min-height:0;position:relative}
+  #eye{height:100%}
+  .eyenote{position:absolute;left:10px;top:8px;font-size:12px;line-height:1.5;
+    background:rgba(7,13,24,.72);padding:6px 9px;border-radius:8px;border:1px solid var(--line)}
+  .eyenote .k{color:var(--dim)}
+
+  footer{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;height:172px}
+  .mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px 6px;
+    display:flex;flex-direction:column;min-height:0}
+  .mini h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
+  .mini .body{flex:1;min-height:0;position:relative}
+  .mini canvas{height:100%}
+  .legend{font-size:10.5px;color:var(--dim);margin-top:2px}
+  .pvtgrid{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(3,1fr);gap:3px;height:100%;padding:2px 0}
+  .cell{border-radius:2px;background:#22324f}
+  .cell.ok{background:var(--ok)} .cell.bad{background:var(--bad)}
+  .flash{animation:flash .6s ease}
+  @keyframes flash{0%{background:rgba(56,189,248,.25)}100%{background:transparent}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>AutoAnalog<span>-RL</span> — live sizing</h1>
+    <div class="chips" id="chips"></div>
+    <div class="spacer"></div>
+    <div class="controls">
+      <button id="restart">⟲ Restart</button>
+      <button id="prev">◀</button>
+      <div class="stepper" id="stepper">step 0 / 0</div>
+      <button id="next">▶</button>
+      <button class="primary" id="play">▶ Play</button>
+      <button id="speed">1×</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Design under test</h2>
+      <svg viewBox="0 0 300 168" style="width:100%;margin:-2px 0 8px">
+        <g stroke="#7f95b8" stroke-width="1.3" fill="none" stroke-linecap="round">
+          <line x1="20" y1="14" x2="280" y2="14"/>
+          <text x="24" y="10" fill="#8da2c0" font-size="8" stroke="none">VDD 1.2 V</text>
+          <path d="M70 14 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+          <path d="M230 14 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+          <text x="34" y="44" fill="#8da2c0" font-size="8.5" stroke="none">R_load</text>
+          <text x="240" y="44" fill="#8da2c0" font-size="8.5" stroke="none">R_load</text>
+          <circle cx="70" cy="62" r="2.4" fill="#38bdf8" stroke="none"/>
+          <circle cx="230" cy="62" r="2.4" fill="#38bdf8" stroke="none"/>
+          <text x="44" y="60" fill="#38bdf8" font-size="8.5" stroke="none">outP</text>
+          <text x="236" y="60" fill="#38bdf8" font-size="8.5" stroke="none">outN</text>
+          <line x1="70" y1="62" x2="70" y2="76"/><line x1="230" y1="62" x2="230" y2="76"/>
+          <path d="M58 76 v22 M62 78 v18 M62 80 h8 M62 94 h8 M70 76 v4 M70 94 v4"/>
+          <path d="M242 76 v22 M238 78 v18 M238 80 h-8 M238 94 h-8 M230 76 v4 M230 94 v4"/>
+          <line x1="40" y1="87" x2="58" y2="87"/><line x1="260" y1="87" x2="242" y2="87"/>
+          <text x="22" y="90" fill="#8da2c0" font-size="8.5" stroke="none">inP</text>
+          <text x="264" y="90" fill="#8da2c0" font-size="8.5" stroke="none">inN</text>
+          <text x="74" y="86" fill="#8da2c0" font-size="7.5" stroke="none">M1 W_in</text>
+          <text x="196" y="86" fill="#8da2c0" font-size="7.5" stroke="none">M2 W_in</text>
+          <line x1="70" y1="98" x2="70" y2="112"/><line x1="230" y1="98" x2="230" y2="112"/>
+          <path d="M70 112 h12 l3-5 l6 10 l6-10 l6 10 l3-5 h44"/>
+          <path d="M230 112 h-12 l-3-5 l-6 10 l-6-10 l-6 10 l-3-5 h-44"/>
+          <text x="92" y="128" fill="#8da2c0" font-size="8.5" stroke="none">R_s</text>
+          <text x="196" y="128" fill="#8da2c0" font-size="8.5" stroke="none">R_s</text>
+          <path d="M70 112 v-8 h60 M170 104 h60 v8"/>
+          <line x1="140" y1="96" x2="140" y2="112"/><line x1="160" y1="96" x2="160" y2="112"/>
+          <path d="M130 104 h10 M160 104 h10"/>
+          <text x="134" y="92" fill="#8da2c0" font-size="8.5" stroke="none">C_s</text>
+          <line x1="150" y1="112" x2="150" y2="122"/>
+          <circle cx="150" cy="132" r="10"/><path d="M150 126 v9 M146 132 l4 5 l4-5"/>
+          <line x1="150" y1="142" x2="150" y2="152"/><path d="M142 152 h16 M145 156 h10 M148 160 h4"/>
+          <text x="164" y="136" fill="#8da2c0" font-size="8.5" stroke="none">I_bias</text>
+        </g>
+      </svg>
+      <div id="knobs"></div>
+      <div class="legend" id="corner"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Eye diagram after the lossy channel</h2>
+      <div class="eyewrap">
+        <canvas id="eye"></canvas>
+        <div class="eyenote" id="eyenote"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Target specification</h2>
+      <div id="specs"></div>
+      <div class="verdict" id="verdict">
+        <div class="big" id="rewardVal">—</div>
+        <div class="sub" id="rewardSub">reward for this design</div>
+      </div>
+      <div class="netlist" id="netlist"><div class="nlhead">sized_ctle.sp — written when the design passes</div><pre id="nlbody">waiting for a feasible design…</pre></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="mini"><h3>AC response (CTLE alone)</h3><div class="body"><canvas id="ac"></canvas></div></div>
+    <div class="mini"><h3>Reward per simulation</h3><div class="body"><canvas id="trace"></canvas></div></div>
+    <div class="mini" id="lastPanel"><h3>What the policy learned from</h3><div class="body"><canvas id="train"></canvas></div>
+      <div class="legend" id="trainLegend"></div></div>
+  </footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/ null;
+
+const $ = (id) => document.getElementById(id);
+const fmt = {
+  W_in:  v => (v*1e6).toFixed(2) + " µm",
+  R_load:v => v.toFixed(0) + " Ω",
+  I_bias:v => (v*1e3).toFixed(3) + " mA",
+  R_s:   v => v.toFixed(0) + " Ω",
+  C_s:   v => (v*1e15).toFixed(0) + " fF",
+  dfe_tap: v => v.toFixed(3),
+};
+const LABEL = {W_in:"W_in  input width", R_load:"R_load", I_bias:"I_bias  tail current",
+               R_s:"R_s  degeneration", C_s:"C_s  degeneration", dfe_tap:"DFE tap"};
+
+let current = -1, playing = false, timer = null, speed = 1;
+const SPEEDS = [1, 1.6, 2.6];
+
+/* ---------- header ---------- */
+function chips(){
+  const s = DATA.specs;
+  const items = [
+    ["model", DATA.model_source.replace("_ngspice"," · ngspice")],
+    ["data rate", DATA.data_rate_gbps + " Gbps (" + DATA.nyquist_ghz + " GHz Nyquist)"],
+    ["channel", DATA.channel_loss_db + " dB @ Nyquist"],
+    ["PVT corner", DATA.corner],
+    ["policy", DATA.run + " · " + DATA.checkpoint],
+  ];
+  $("chips").innerHTML = items.map(([k,v]) => `<div class="chip">${k} <b>${v}</b></div>`).join("");
+  $("corner").textContent = "starting design drawn at random · corner " + DATA.corner;
+}
+
+/* ---------- knobs ---------- */
+function knobs(step, prev){
+  const names = Object.keys(step.parameters);
+  $("knobs").innerHTML = names.map(n => {
+    const [lo, hi] = DATA.bounds[n] || [-0.5, 0.5];
+    const v = step.parameters[n];
+    const pct = Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+    let delta = "";
+    if (prev){
+      const d = v - prev.parameters[n];
+      if (Math.abs(d) > Math.abs(v) * 1e-4){
+        const cls = d > 0 ? "up" : "down";
+        delta = `<span class="delta ${cls}">${d > 0 ? "▲" : "▼"} ${fmt[n] ? fmt[n](Math.abs(d)) : Math.abs(d).toFixed(3)}</span>`;
+      }
+    }
+    return `<div class="knob">
+      <div class="row"><span class="name">${LABEL[n] || n}</span>
+        <span class="val">${fmt[n] ? fmt[n](v) : v.toFixed(3)}${delta}</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="bounds"><span>${fmt[n] ? fmt[n](lo) : lo}</span><span>${fmt[n] ? fmt[n](hi) : hi}</span></div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------- specs ---------- */
+const SPEC_ROWS = () => {
+  const s = DATA.specs;
+  const rows = [
+    ["peaking_boost", "HF peaking @ Nyquist", m => m.peaking_boost, v => v==null?"—":v.toFixed(2)+" dB", `${s.peaking_min_db}–${s.peaking_max_db} dB`],
+    ["power", "Power", m => m.power, v => v==null?"—":(v*1e3).toFixed(2)+" mW", `≤ ${(s.power_max_w*1e3).toFixed(0)} mW`],
+    ["eye_vertical_v", "Eye height (post-channel)", m => m.eye_vertical_v, v => v==null?"—":v.toFixed(3)+" V", `≥ ${s.eye_vertical_min_v} V`],
+    ["eye_horizontal_ui", "Eye width", m => m.eye_horizontal_ui, v => v==null?"—":v.toFixed(2)+" UI", `≥ ${s.eye_horizontal_min_ui} UI`],
+  ];
+  if (s.enforce_hd3) rows.push(["hd3", "HD3 linearity", m => m.hd3_db, v => v==null?"—":v.toFixed(1)+" dB", `≤ ${s.hd3_max_db} dB`]);
+  return rows;
+};
+
+function specs(step){
+  const html = SPEC_ROWS().map(([key, name, get, show, target]) => {
+    const v = get(step.metrics);
+    let viol = step.violations[key];
+    if (key === "peaking_boost") viol = Math.max(step.violations.peaking_boost ?? 0, step.violations.peaking_ceiling ?? 0);
+    const ok = viol != null && viol <= 0;
+    const pending = v == null;
+    return `<div class="spec">
+      <div><div class="nm">${name}</div><div class="tg">target ${target}</div></div>
+      <div style="text-align:right">
+        <div class="vl">${show(v)}</div>
+        <span class="badge ${ok ? "ok" : "bad"}">${pending ? "not run" : ok ? "PASS" : "FAIL"}</span>
+      </div></div>`;
+  }).join("");
+  $("specs").innerHTML = html;
+
+  const v = $("verdict");
+  v.classList.toggle("pass", step.all_specs_met);
+  $("rewardVal").textContent = step.reward.toFixed(2);
+  $("rewardSub").textContent = step.all_specs_met
+    ? "all specifications met — design accepted"
+    : "reward for this design (negative = specs missed)";
+  v.classList.remove("flash"); void v.offsetWidth; v.classList.add("flash");
+
+  const nl = $("netlist"), body = $("nlbody");
+  nl.classList.toggle("pass", step.all_specs_met);
+  if (step.all_specs_met && DATA.netlist){
+    const NL = String.fromCharCode(10);
+    const keep = DATA.netlist.split(NL).filter(l => l.trim() && !l.startsWith("* Parameterized") && !l.startsWith("* Analysis"));
+    body.textContent = keep.slice(0, 16).join(NL);
+  } else {
+    body.textContent = "waiting for a feasible design…";
+  }
+}
+
+/* ---------- canvas helpers ---------- */
+function ctxFor(id){
+  const c = $(id), dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(10, r.width * dpr); c.height = Math.max(10, r.height * dpr);
+  const x = c.getContext("2d"); x.scale(dpr, dpr);
+  x.clearRect(0, 0, r.width, r.height);
+  return [x, r.width, r.height];
+}
+function axes(x, w, h, pad, xl, yl){
+  x.strokeStyle = "#22324f"; x.lineWidth = 1;
+  x.strokeRect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b);
+  x.fillStyle = "#6d82a4"; x.font = "10px Segoe UI";
+  if (xl) x.fillText(xl, w / 2 - 20, h - 2);
+  if (yl){ x.save(); x.translate(9, h / 2 + 22); x.rotate(-Math.PI/2); x.fillText(yl, 0, 0); x.restore(); }
+}
+
+/* ---------- eye ---------- */
+function drawEye(step){
+  const [x, w, h] = ctxFor("eye");
+  const pad = {l: 42, r: 12, t: 12, b: 26};
+  const traces = step.eye || [];
+  const note = $("eyenote");
+  if (!traces.length){
+    axes(x, w, h, pad, "unit intervals", "differential output (V)");
+    x.fillStyle = "#fb7185"; x.font = "13px Segoe UI";
+    x.fillText("no transient — DC gate failed (fail-fast: nothing further simulated)", pad.l + 16, h / 2);
+    note.innerHTML = "";
+    return;
+  }
+  let lo = Infinity, hi = -Infinity;
+  for (const t of traces) for (const v of t){ if (v < lo) lo = v; if (v > hi) hi = v; }
+  const span = Math.max(hi - lo, 0.05), mid = (hi + lo) / 2;
+  lo = mid - span * 0.62; hi = mid + span * 0.62;
+  const X = u => pad.l + u / 2 * (w - pad.l - pad.r);
+  const Y = v => pad.t + (hi - v) / (hi - lo) * (h - pad.t - pad.b);
+
+  // target eye box
+  const eh = DATA.specs.eye_vertical_min_v, ew = DATA.specs.eye_horizontal_min_ui;
+  const cx = step.metrics.eye_center_ui != null ? step.metrics.eye_center_ui : 0.5;
+  x.fillStyle = "rgba(52,211,153,.10)"; x.strokeStyle = "rgba(52,211,153,.45)";
+  x.setLineDash([4, 3]);
+  const bx = X(cx + 0.5 - ew / 2), bw = X(cx + 0.5 + ew / 2) - bx;
+  const by = Y(mid + eh / 2), bh = Y(mid - eh / 2) - by;
+  x.fillRect(bx, by, bw, bh); x.strokeRect(bx, by, bw, bh);
+  x.setLineDash([]);
+  x.fillStyle = "rgba(52,211,153,.75)"; x.font = "10px Segoe UI";
+  x.fillText("required opening", bx + 4, by - 4);
+
+  axes(x, w, h, pad, "unit intervals", "differential output (V)");
+  x.strokeStyle = "rgba(56,189,248,.16)"; x.lineWidth = 1;
+  for (const t of traces){
+    x.beginPath();
+    t.forEach((v, i) => { const u = i / (t.length - 1) * 2; i ? x.lineTo(X(u), Y(v)) : x.moveTo(X(u), Y(v)); });
+    x.stroke();
+  }
+  x.fillStyle = "#6d82a4"; x.font = "10px Segoe UI";
+  for (const u of [0, 0.5, 1, 1.5, 2]) x.fillText(u.toFixed(1), X(u) - 7, h - 12);
+  for (let k = 0; k <= 4; k++){ const v = lo + (hi - lo) * k / 4; x.fillText(v.toFixed(2), 8, Y(v) + 3); }
+
+  const m = step.metrics, okH = m.eye_vertical_v >= eh, okW = m.eye_horizontal_ui >= ew;
+  note.innerHTML =
+    `<div><span class="k">eye height</span> <b style="color:${okH ? "var(--ok)" : "var(--bad)"}">${m.eye_vertical_v.toFixed(3)} V</b> <span class="k">/ ${eh} V</span></div>` +
+    `<div><span class="k">eye width</span> <b style="color:${okW ? "var(--ok)" : "var(--bad)"}">${m.eye_horizontal_ui.toFixed(2)} UI</b> <span class="k">/ ${ew} UI</span></div>` +
+    `<div class="k">PRBS7 · ${DATA.data_rate_gbps} Gbps · UI ${DATA.unit_interval_ps} ps</div>`;
+}
+
+/* ---------- AC ---------- */
+function drawAC(step){
+  const [x, w, h] = ctxFor("ac");
+  const pad = {l: 34, r: 10, t: 10, b: 20};
+  const ac = step.ac || {f: [], g: []};
+  if (!ac.f.length){ axes(x, w, h, pad); return; }
+  const f0 = Math.log10(ac.f[0]), f1 = Math.log10(ac.f[ac.f.length - 1]);
+  let lo = Math.min(...ac.g), hi = Math.max(...ac.g);
+  const pad2 = Math.max((hi - lo) * 0.2, 0.6); lo -= pad2; hi += pad2;
+  const X = f => pad.l + (Math.log10(f) - f0) / (f1 - f0) * (w - pad.l - pad.r);
+  const Y = g => pad.t + (hi - g) / (hi - lo) * (h - pad.t - pad.b);
+  axes(x, w, h, pad);
+  const nyq = DATA.nyquist_ghz * 1e9;
+  x.strokeStyle = "rgba(251,191,36,.7)"; x.setLineDash([4, 3]);
+  x.beginPath(); x.moveTo(X(nyq), pad.t); x.lineTo(X(nyq), h - pad.b); x.stroke(); x.setLineDash([]);
+  x.fillStyle = "rgba(251,191,36,.9)"; x.font = "9.5px Segoe UI"; x.fillText("Nyquist", X(nyq) + 3, pad.t + 10);
+  x.strokeStyle = "#38bdf8"; x.lineWidth = 1.8; x.beginPath();
+  ac.f.forEach((f, i) => i ? x.lineTo(X(f), Y(ac.g[i])) : x.moveTo(X(f), Y(ac.g[i])));
+  x.stroke();
+  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
+  x.fillText("10 MHz", pad.l, h - 6); x.fillText("10 GHz", w - pad.r - 34, h - 6);
+  const pk = step.metrics.peaking_boost;
+  if (pk != null){ x.fillStyle = "#e8eef8"; x.font = "11px Segoe UI";
+    x.fillText("peaking " + pk.toFixed(2) + " dB", pad.l + 6, pad.t + 12); }
+}
+
+/* ---------- reward trace ---------- */
+function drawTrace(upto){
+  const [x, w, h] = ctxFor("trace");
+  const pad = {l: 34, r: 10, t: 10, b: 20};
+  const steps = DATA.steps, n = steps.length;
+  const rs = steps.map(s => s.reward);
+  let lo = Math.min(-2, ...rs), hi = Math.max(...rs, 2);
+  const X = i => pad.l + (n === 1 ? 0.5 : i / (n - 1)) * (w - pad.l - pad.r);
+  const Y = r => pad.t + (hi - r) / (hi - lo) * (h - pad.t - pad.b);
+  axes(x, w, h, pad);
+  x.strokeStyle = "#2a3d5e"; x.setLineDash([3, 3]); x.beginPath();
+  x.moveTo(pad.l, Y(0)); x.lineTo(w - pad.r, Y(0)); x.stroke(); x.setLineDash([]);
+  x.strokeStyle = "#38bdf8"; x.lineWidth = 2; x.beginPath();
+  for (let i = 0; i <= upto; i++) i ? x.lineTo(X(i), Y(rs[i])) : x.moveTo(X(i), Y(rs[i]));
+  x.stroke();
+  for (let i = 0; i <= upto; i++){
+    x.fillStyle = steps[i].all_specs_met ? "#34d399" : "#fb7185";
+    x.beginPath(); x.arc(X(i), Y(rs[i]), 4, 0, 7); x.fill();
+  }
+  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
+  for (let i = 0; i < n; i++) x.fillText("sim " + (i + 1), X(i) - 12, h - 6);
+  x.fillText(hi.toFixed(0), 8, Y(hi) + 8); x.fillText(lo.toFixed(0), 8, Y(lo) - 2);
+}
+
+/* ---------- training curve / PVT ---------- */
+function drawTraining(){
+  const t = DATA.training;
+  if (!t || !t.step || !t.step.length){ $("lastPanel").style.display = "none"; return; }
+  const [x, w, h] = ctxFor("train");
+  const pad = {l: 34, r: 10, t: 10, b: 20};
+  const X = s => pad.l + s / t.step[t.step.length - 1] * (w - pad.l - pad.r);
+  const Y = p => pad.t + (100 - p) / 100 * (h - pad.t - pad.b);
+  axes(x, w, h, pad);
+  x.strokeStyle = "#34d399"; x.lineWidth = 2; x.beginPath();
+  t.step.forEach((s, i) => i ? x.lineTo(X(s), Y(t.feasible[i])) : x.moveTo(X(s), Y(t.feasible[i])));
+  x.stroke();
+  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
+  x.fillText("0", pad.l, h - 6);
+  x.fillText(t.step[t.step.length - 1].toLocaleString() + " steps", w - pad.r - 70, h - 6);
+  x.fillText("100%", 6, Y(100) + 9); x.fillText("0%", 12, Y(0) - 2);
+  $("trainLegend").textContent =
+    "% of training steps meeting every spec — training ran once (" +
+    t.step[t.step.length - 1].toLocaleString() + " simulations); the rollout above reuses it.";
+}
+function drawPVT(){
+  if (!DATA.pvt) return false;
+  const panel = $("lastPanel");
+  panel.querySelector("h3").textContent = "PVT verification of this design (45 corners)";
+  const pass = DATA.pvt.filter(p => p.pass).length;
+  panel.querySelector(".body").innerHTML =
+    `<div class="pvtgrid">${DATA.pvt.map(p => `<div class="cell ${p.pass ? "ok" : "bad"}" title="${p.name}: ${p.peaking} dB"></div>`).join("")}</div>`;
+  $("trainLegend").textContent = `${pass}/${DATA.pvt.length} corners pass — 5 process × 3 supply × 3 temperature, peaking inside 3–12 dB at every corner.`;
+  return true;
+}
+
+/* ---------- driver ---------- */
+function render(i){
+  current = i;
+  const step = DATA.steps[i], prev = i > 0 ? DATA.steps[i - 1] : null;
+  $("stepper").textContent = `sim ${i + 1} / ${DATA.steps.length}`;
+  knobs(step, prev); specs(step); drawEye(step); drawAC(step); drawTrace(i);
+  if (step.all_specs_met) drawPVT(); else drawTraining();
+}
+function next(){
+  if (current + 1 < DATA.steps.length){ render(current + 1); return true; }
+  return false;
+}
+function play(){
+  playing = true; $("play").textContent = "❚❚ Pause";
+  const tick = () => {
+    if (!playing) return;
+    if (!next()){ playing = false; $("play").textContent = "▶ Play"; return; }
+    timer = setTimeout(tick, 2600 / speed);
+  };
+  timer = setTimeout(tick, 1400 / speed);
+}
+function pause(){ playing = false; clearTimeout(timer); $("play").textContent = "▶ Play"; }
+
+$("play").onclick = () => playing ? pause() : (current + 1 >= DATA.steps.length ? (render(0), play()) : play());
+$("next").onclick = () => { pause(); next(); };
+$("prev").onclick = () => { pause(); if (current > 0) render(current - 1); };
+$("restart").onclick = () => { pause(); render(0); };
+$("speed").onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; $("speed").textContent = speed + "×"; };
+window.addEventListener("resize", () => render(current));
+document.addEventListener("keydown", e => {
+  if (e.code === "Space"){ e.preventDefault(); $("play").click(); }
+  if (e.code === "ArrowRight") $("next").click();
+  if (e.code === "ArrowLeft") $("prev").click();
+});
+
+/* #step=2 opens on a given simulation, #auto=0 disables the autoplay (handy for screenshots). */
+const HASH = new URLSearchParams(location.hash.slice(1));
+const START = Math.max(0, Math.min(DATA.steps.length - 1, (parseInt(HASH.get("step"), 10) || 1) - 1));
+const AUTO = HASH.get("auto") !== "0";
+
+chips(); render(START); if (START === 0) drawTraining();
+if (AUTO) setTimeout(() => { if (!playing && current === START) play(); }, 1200);
+</script>
+</body>
+</html>
