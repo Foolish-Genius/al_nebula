@@ -106,3 +106,18 @@ autoanalog_demo_dark.html#s=trace&tr=5     the trace paused at the ngspice gates
 
 Use whichever suits the room — the light page for a projector, the dark one for a screen
 recording. Both are self-contained and neither depends on the other.
+
+---
+
+## On a phone
+
+Both pages are responsive. Below 860 px the layout collapses to a single column: the multi-column
+grids stack, the rollout's knobs / eye / specs become three stacked panels, the exploded device
+scales down with its layer index underneath as a two-column list, and the trace rail moves above
+the stage content. Below 430 px everything goes to one column and the type steps down again.
+
+Each screen scrolls vertically if its content is taller than the viewport, and **swiping left and
+right advances and rewinds** — the same as `→` and `←`, so on the live screen a swipe runs the
+next simulation. The Back/Next buttons stay pinned at the bottom.
+
+Verified with no horizontal overflow on every screen at 390 px.

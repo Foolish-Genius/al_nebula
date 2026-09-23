@@ -187,6 +187,78 @@
   .step h4{margin:6px 0 4px;font-size:14px;font-weight:600}
   .step p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
   .arrow{align-self:center;color:var(--edge);padding:0 10px;font-size:18px}
+
+  /* ---------- phones and small tablets ---------- */
+  @media (max-width:860px){
+    section{padding:54px 18px 74px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+    .wrap,.wrap.center{flex:0 0 auto;justify-content:flex-start}
+    #brand{top:15px;left:18px;font-size:11.5px} #brand span{display:none}
+    #count{top:15px;right:18px;font-size:11px}
+    h1{font-size:33px;margin-bottom:14px}
+    h2{font-size:25px;margin-bottom:10px}
+    .lead{font-size:15.5px;margin-bottom:20px}
+    .eyebrow{font-size:10.5px;letter-spacing:.12em;margin-bottom:10px}
+    .num{font-size:29px}
+    .grid{gap:12px}
+    .g2,.g3,.g4{grid-template-columns:1fr}
+    .card{padding:15px 17px;border-radius:12px}
+    .card h3{font-size:14.5px}
+    .quote{font-size:17px}
+    pre{font-size:10.5px;padding:12px 14px;overflow-x:auto}
+    table{font-size:12px} th,td{padding:7px 8px}
+    .card{overflow-x:auto}
+    .rule{margin:16px 0}
+    .flow{flex-direction:column}
+    .arrow{display:none}
+    .step{margin-bottom:10px}
+
+    /* the exploded device: scale it down and stack the index and the panel under it */
+    .arch{grid-template-columns:1fr;grid-template-rows:auto auto auto;gap:6px;flex:0 0 auto}
+    .stage{height:300px;transform:scale(.56);transform-origin:center center}
+    .tags{align-self:stretch;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+    .tags b{margin-bottom:0;font-size:11.5px;padding:6px 8px}
+    .tags b i{margin-right:7px}
+    .panel{gap:10px}
+    .panel .who{font-size:23px}
+    .panel .says{font-size:13.5px}
+
+    /* the trace: rail above, stage content below */
+    .trace{grid-template-columns:1fr;grid-template-rows:auto auto;gap:14px;flex:0 0 auto}
+    .rail{align-self:stretch;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+    .rung{margin-bottom:0;font-size:11.5px;padding:6px 8px}
+    .rung i{margin-right:8px}
+    .rung .dir{margin-left:6px}
+    .stagebox .hd{font-size:22px}
+    .stagebox .sub{font-size:13.5px}
+    .vec span{font-size:11px;padding:5px 8px}
+    .gates{gap:8px} .gate{min-width:130px;padding:10px 12px}
+    .gate .g2v{font-size:15px}
+
+    /* the rollout */
+    .rollout{grid-template-columns:1fr;gap:12px;flex:0 0 auto}
+    .rollcol{gap:10px}
+    .eyebox{flex:0 0 auto;min-height:250px}
+    .fillbox,.chartbox .body{min-height:190px}
+    .chartbox{flex:0 0 auto !important;min-height:180px}
+    .verdict{margin-top:0 !important}
+    .pvt{gap:2px;min-height:110px}
+
+    nav{height:62px;padding:0 18px}
+    .hint{display:none}
+    button{font-size:13px;padding:10px 15px}
+    .dot{width:5px;height:5px} .dots{gap:5px}
+  }
+  @media (max-width:430px){
+    section{padding:50px 14px 70px}
+    h1{font-size:27px} h2{font-size:21px}
+    .lead{font-size:14.5px}
+    pre{font-size:9.5px;padding:10px 12px}
+    table{font-size:11px} th,td{padding:6px 6px}
+    .stage{height:250px;transform:scale(.44)}
+    .tags,.rail{grid-template-columns:1fr}
+    .dots{gap:4px} .dot{width:4px;height:4px}
+    button{padding:10px 13px}
+  }
 </style>
 </head>
 <body>
@@ -974,6 +1046,17 @@ document.addEventListener("keydown", e => {
   if (e.code === "Home") go(0);
   if (e.code === "End") go(SECTIONS.length - 1);
 });
+
+// swipe left/right to advance on touch devices
+let tX = 0, tY = 0;
+document.addEventListener("touchstart", e => {
+  tX = e.changedTouches[0].clientX; tY = e.changedTouches[0].clientY;
+}, {passive:true});
+document.addEventListener("touchend", e => {
+  const dx = e.changedTouches[0].clientX - tX, dy = e.changedTouches[0].clientY - tY;
+  if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6){ dx < 0 ? fwd() : back(); }
+}, {passive:true});
+
 window.addEventListener("resize", () => paint());
 
 // #s=<id or number> opens a screen; &lay= &tr= &sim= open it part-way through.
