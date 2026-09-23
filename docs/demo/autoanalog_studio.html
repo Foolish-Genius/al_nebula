@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoAnalog-RL Studio</title>
+<style>
+  :root{
+    --paper:#F7F9FC; --card:#FFFFFF; --ink:#0F1C2E; --muted:#5B6B80; --faint:#8494A8;
+    --hair:#E3E9F2; --blue:#1A6FE8; --deep:#0A4DA6; --wash:#EEF4FD;
+    --ok:#0E7C57; --okwash:#E7F5EF; --bad:#C2453B; --badwash:#FBEDEC;
+    --amber:#A8651A; --amberwash:#FDF4E6; --cma:#E0A32E; --rand:#A9B7C9;
+    --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    --mono:"SF Mono",Consolas,"Roboto Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased}
+  body{display:flex;flex-direction:column;overflow:hidden}
+  button{font-family:inherit;cursor:pointer}
+  canvas{display:block;width:100%;height:100%}
+
+  /* ---------- top bar ---------- */
+  .top{height:60px;flex:0 0 auto;display:flex;align-items:center;gap:26px;padding:0 26px;
+    border-bottom:1px solid var(--hair);background:var(--card)}
+  .brand{font-size:15px;white-space:nowrap} .brand b{font-weight:650}
+  .brand span{font-family:var(--serif);color:var(--blue);font-size:17px;margin-left:4px}
+  .phases{display:flex;gap:6px;margin:0 auto;font-size:12.5px}
+  .phases span{padding:6px 12px;border-radius:999px;color:var(--faint);border:1px solid transparent;transition:.3s}
+  .phases span.done{color:var(--ok)}
+  .phases span.done::before{content:"\2713  "}
+  .phases span.on{color:var(--blue);border-color:#CFE0FB;background:var(--wash);font-weight:600}
+  .pill{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 12px;border-radius:999px;
+    border:1px solid var(--hair);color:var(--muted);white-space:nowrap}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .pill.live{color:var(--ok);border-color:#BFE3D2;background:var(--okwash)}
+  .pill.live i{background:var(--ok);animation:pulse 1.6s infinite}
+  .pill.replay{color:var(--deep);border-color:#CFE0FB;background:var(--wash)}
+  .pill.replay i{background:var(--blue)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(14,124,87,.45)}70%{box-shadow:0 0 0 7px rgba(14,124,87,0)}100%{box-shadow:0 0 0 0 rgba(14,124,87,0)}}
+
+  /* ---------- layout ---------- */
+  .app{flex:1;min-height:0;display:grid;grid-template-columns:330px 1fr 350px;gap:18px;padding:18px 22px 20px}
+  .col{min-height:0;display:flex;flex-direction:column;gap:12px}
+  .left{overflow-y:auto;padding-right:4px}
+  .h{display:flex;align-items:baseline;gap:10px;font-family:var(--serif);font-size:21px;margin:2px 0 2px}
+  .h em{font-style:normal;font-family:var(--sans);font-size:11px;font-weight:700;color:#fff;background:var(--blue);
+    width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transform:translateY(-2px)}
+  .h .status{margin-left:auto;font-family:var(--sans);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:14px 16px}
+  .card h4{margin:0 0 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:650;
+    display:flex;justify-content:space-between;align-items:baseline}
+  .fine{font-size:12px;color:var(--faint);line-height:1.5}
+
+  /* ---------- specify ---------- */
+  .ask{position:relative}
+  .ask textarea{width:100%;resize:none;border:1px solid var(--hair);border-radius:12px;padding:12px 14px 40px;
+    font:14px/1.45 var(--sans);color:var(--ink);background:var(--card);outline:none;transition:.2s}
+  .ask textarea:focus{border-color:#9DC0F5;box-shadow:0 0 0 3px var(--wash)}
+  .ask button{position:absolute;right:8px;bottom:9px;border:0;border-radius:8px;background:var(--wash);color:var(--deep);
+    font-size:12.5px;font-weight:600;padding:6px 11px}
+  .ask button:hover{background:#DDE9FC}
+  .asknote{font-size:12px;color:var(--muted);min-height:0;line-height:1.45}
+  .asknote b{color:var(--deep)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--hair);background:var(--card);border-radius:999px;padding:6px 11px;font-size:12.5px;color:var(--ink);transition:.2s}
+  .chip:hover{border-color:var(--blue);color:var(--blue)}
+  .chip.warn{border-style:dashed}
+  .slider{padding:10px 2px 6px;border-bottom:1px solid var(--hair)}
+  .slider:last-child{border-bottom:0}
+  .slider .r{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+  .slider .r b{font-variant-numeric:tabular-nums;font-size:15px}
+  .slider .r b small{font-weight:400;color:var(--muted);font-size:12px;margin-left:3px}
+  .slider .r span{color:var(--muted)}
+  input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--blue)}
+  .field{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);gap:10px}
+  .field select{flex:1;max-width:200px;border:1px solid var(--hair);border-radius:8px;padding:6px 8px;font:13px var(--sans);background:var(--card);color:var(--ink)}
+  .toggle{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}
+  .toggle input{accent-color:var(--blue);width:16px;height:16px}
+  .go{border:0;border-radius:12px;background:var(--ink);color:#fff;font-size:15.5px;font-weight:600;padding:15px 18px;
+    display:flex;justify-content:space-between;align-items:center;transition:.2s}
+  .go:hover{background:var(--blue)}
+  .go:disabled{opacity:.45;cursor:default;background:var(--ink)}
+  .go kbd{font:11px var(--mono);opacity:.6}
+
+  /* ---------- the agent works ---------- */
+  .banner{font-size:12.5px;color:var(--deep);background:var(--wash);border:1px solid #D6E5FB;border-radius:10px;padding:8px 12px;line-height:1.45}
+  .eyecard{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;position:relative}
+  .eyehead{display:flex;gap:20px;font-size:12.5px;color:var(--faint);align-items:baseline;flex-wrap:wrap}
+  .eyehead b{font-variant-numeric:tabular-nums}
+  .eyehead .sim{margin-left:auto;font-family:var(--serif);font-size:18px;color:var(--ink)}
+  .fillbox{flex:1;min-height:0;position:relative}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:12px;height:250px;flex:0 0 auto}
+  .row3 .card{display:flex;flex-direction:column;min-height:0}
+  .knob{font-size:12.5px;margin-bottom:9px}
+  .knob .r{display:flex;justify-content:space-between;align-items:baseline}
+  .knob .n{color:var(--muted)}
+  .knob .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .knob .d{font-size:11px;margin-left:5px;color:var(--blue)}
+  .track{height:4px;background:#EDF1F7;border-radius:3px;margin-top:4px;position:relative;overflow:hidden}
+  .fill{position:absolute;inset:0 auto 0 0;background:var(--blue);border-radius:3px;transition:width .55s cubic-bezier(.3,.8,.3,1)}
+  .log{flex:1;min-height:0;overflow-y:auto;font-size:12.5px;line-height:1.45;display:flex;flex-direction:column;gap:7px}
+  .log div{padding-left:12px;border-left:2px solid var(--hair);color:var(--muted);animation:in .35s ease}
+  .log div b{color:var(--ink);font-weight:600}
+  .log div.ok{border-left-color:var(--ok)} .log div.ok b{color:var(--ok)}
+  .log div.warn{border-left-color:var(--amber)}
+  @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* ---------- result ---------- */
+  .right{overflow-y:auto;padding-right:2px}
+  .check{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--hair);font-size:13px}
+  .check:last-child{border-bottom:0}
+  .check .t{color:var(--faint);font-size:11.5px;margin-left:6px}
+  .check .v{font-variant-numeric:tabular-nums;font-weight:600;margin-right:8px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:650;min-width:44px;text-align:center}
+  .tag.ok{background:var(--okwash);color:var(--ok)}
+  .tag.bad{background:var(--badwash);color:var(--bad)}
+  .tag.idle{background:#F1F4F8;color:var(--faint)}
+  .lane{display:grid;grid-template-columns:92px 1fr;gap:4px 10px;align-items:center;margin-bottom:10px}
+  .lane .who{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+  .lane .who i{width:8px;height:8px;border-radius:2px}
+  .lane .slots{display:flex;flex-wrap:wrap;gap:3px}
+  .lane .slots s{width:8px;height:8px;border-radius:2px;background:#EEF2F7;text-decoration:none}
+  .lane .slots s.x{background:#C9D3E0}
+  .lane .slots s.a{background:#9DC0F5}
+  .lane .slots s.y{background:var(--ok)}
+  .lane .st{grid-column:2;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .lane .st.win{color:var(--ok);font-weight:600}
+  .racefoot{font-size:12px;color:var(--muted);border-top:1px solid var(--hair);padding-top:8px;line-height:1.5}
+  .res{animation:in .45s ease}
+  .res .big{font-family:var(--serif);font-size:54px;line-height:1;color:var(--ok)}
+  .res .lbl{font-size:13px;color:var(--muted);margin:4px 0 10px;line-height:1.45}
+  .res .lbl b{color:var(--ink)}
+  .pvtmini{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin:8px 0 4px}
+  .pvtmini i{aspect-ratio:1.6;border-radius:3px;background:#EEF2F7;transition:background .3s}
+  .pvtmini i.ok{background:var(--ok)} .pvtmini i.no{background:var(--bad)}
+  .btns{display:flex;gap:8px;margin-top:12px}
+  .btn{flex:1;border:1px solid var(--hair);background:var(--card);border-radius:10px;padding:10px;font-size:13px;font-weight:600;color:var(--ink)}
+  .btn:hover{border-color:var(--blue);color:var(--blue)}
+  .btn.solid{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.solid:hover{background:var(--deep);color:#fff}
+  .btn:disabled{opacity:.4;cursor:default}
+  .rc{background:var(--amberwash);border-color:#F1DDBA}
+  .rc .big{color:var(--amber);font-size:30px}
+  .rc b{color:var(--ink)}
+
+  /* ---------- tape-out sheet ---------- */
+  .sheet{position:fixed;inset:0;background:rgba(15,28,46,.36);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px}
+  .sheet[hidden]{display:none}
+  .paper{background:var(--card);border-radius:18px;width:min(1180px,100%);max-height:100%;overflow:auto;padding:26px 30px;
+    box-shadow:0 30px 80px rgba(15,28,46,.25);animation:in .35s ease}
+  .paper .hd{display:flex;align-items:baseline;gap:14px;margin-bottom:16px}
+  .paper .hd h2{font-family:var(--serif);font-weight:400;font-size:30px;margin:0}
+  .paper .hd .x{margin-left:auto;border:0;background:none;font-size:22px;color:var(--faint)}
+  .paper .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
+  .paper table{border-collapse:collapse;width:100%;font-size:13px}
+  .paper th,.paper td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hair)}
+  .paper th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .paper td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .pvtbig{display:grid;grid-template-columns:34px repeat(9,1fr);gap:3px;font-size:10px;color:var(--faint)}
+  .pvtbig i{height:22px;border-radius:4px;background:#EEF2F7;display:flex;align-items:center;justify-content:center;
+    font-style:normal;color:#fff;font-size:9.5px;font-variant-numeric:tabular-nums}
+  .pvtbig i.ok{background:var(--ok)} .pvtbig i.no{background:var(--bad)}
+  .pvtbig span{display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15}
+  pre{font:11.5px/1.5 var(--mono);background:#0F1C2E;color:#D7E3F4;border-radius:12px;padding:14px 16px;margin:0;max-height:260px;overflow:auto}
+
+  @media (max-width:1180px){
+    body{overflow:auto;display:block}
+    .app{grid-template-columns:1fr;height:auto}
+    .left,.right{overflow:visible}
+    .eyecard{height:360px;flex:none}
+    .row3{grid-template-columns:1fr;height:auto}
+    .row3 .card{height:230px}
+    .phases{display:none}
+    .paper .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>AutoAnalog-RL</b><span>Studio</span></div>
+  <nav class="phases" id="phases"><span>Specify</span><span>Sizing</span><span>Verifying</span><span>Tape-out</span></nav>
+  <div class="pill" id="pill"><i></i><span>Connecting&hellip;</span></div>
+</header>
+
+<main class="app">
+  <aside class="col left">
+    <div class="h"><em>1</em>Specify</div>
+    <div class="ask">
+      <textarea id="ask" rows="3" placeholder="Describe what you need, e.g. &ldquo;low-power link, eye at least 0.3 V, worst-case corner&rdquo;"></textarea>
+      <button id="askBtn">Set specs &crarr;</button>
+    </div>
+    <div class="asknote" id="askNote"></div>
+    <div class="chips" id="chips"></div>
+    <div class="card" style="padding:4px 14px"><div id="sliders"></div></div>
+    <label class="field">PVT corner <select id="corner"></select></label>
+    <label class="toggle"><input type="checkbox" id="race" checked> Race CMA-ES and random search</label>
+    <button class="go" id="go">Size the circuit <kbd>Ctrl&nbsp;&crarr;</kbd></button>
+    <div class="fine" id="modeNote"></div>
+  </aside>
+
+  <section class="col mid">
+    <div class="h"><em>2</em>The agent at work <span class="status" id="status">idle</span></div>
+    <div class="banner" id="banner" hidden></div>
+    <div class="card eyecard">
+      <div class="eyehead" id="eyehead"></div>
+      <div class="fillbox"><canvas id="eye"></canvas></div>
+    </div>
+    <div class="row3">
+      <div class="card"><h4>Design <span id="simTag"></span></h4><div id="knobs"></div></div>
+      <div class="card"><h4>Frequency response</h4><div class="fillbox"><canvas id="ac"></canvas></div></div>
+      <div class="card"><h4>Agent log</h4><div class="log" id="log"></div></div>
+    </div>
+  </section>
+
+  <aside class="col right">
+    <div class="h"><em>3</em>Result</div>
+    <div class="card"><h4>Specification <span id="checkTag"></span></h4><div id="checks"></div></div>
+    <div id="result"><div class="card fine" style="border-style:dashed">The sized design, its 45-corner check and the netlist land here.</div></div>
+    <div class="card" id="raceCard"><h4>Race &middot; one simulator each <span id="raceClock"></span></h4><div id="lanes"></div><div class="racefoot" id="raceFoot" hidden></div></div>
+  </aside>
+</main>
+
+<div class="sheet" id="sheet" hidden><div class="paper" id="paper"></div></div>
+
+<script>
+const LIBRARY = null;
+const API = location.protocol.indexOf("http") === 0 ? "" : "http://localhost:8765";
+const $ = id => document.getElementById(id);
+const NL = String.fromCharCode(10);
+
+/* ------------------------------------------------------------ specification */
+const SPEC = [
+  {key:"eye_height_v",   label:"Eye height",  dir:"≥", unit:"V",  min:0.20, max:0.45, step:0.01, dp:2},
+  {key:"eye_width_ui",   label:"Eye width",   dir:"≥", unit:"UI", min:0.60, max:0.90, step:0.01, dp:2},
+  {key:"power_mw",       label:"Power budget",dir:"≤", unit:"mW", min:0.8,  max:2.4,  step:0.1,  dp:1},
+  {key:"peaking_min_db", label:"HF peaking",  dir:"≥", unit:"dB", min:2,    max:6,    step:0.5,  dp:1},
+];
+const spec = {eye_height_v:0.25, eye_width_ui:0.70, power_mw:2.0, peaking_min_db:3, corner:"random"};
+const PRESETS = [
+  {name:"PCIe Gen 2 baseline", v:{eye_height_v:0.25, eye_width_ui:0.70, power_mw:2.0, peaking_min_db:3}},
+  {name:"Low power",           v:{eye_height_v:0.30, eye_width_ui:0.70, power_mw:1.2, peaking_min_db:3}},
+  {name:"Wide eye",            v:{eye_height_v:0.35, eye_width_ui:0.85, power_mw:2.0, peaking_min_db:3}},
+  {name:"Lossy channel",       v:{eye_height_v:0.30, eye_width_ui:0.70, power_mw:2.0, peaking_min_db:5}},
+  {name:"Push it too far",     v:{eye_height_v:0.45, eye_width_ui:0.70, power_mw:2.0, peaking_min_db:3}, warn:true},
+];
+const CORNER_PICKS = [
+  ["random", "Random corner (surprise the agent)"],
+  ["TT_1.00V_62.5C", "Typical · TT 1.00× 62.5°C"],
+  ["SS_0.95V_125C", "Worst case · SS 0.95× 125°C"],
+  ["FF_1.05V_0C", "Fast · FF 1.05× 0°C"],
+];
+let MODE = "connecting";   // live | replay | offline
+let CLAUDE = false;
+
+function grid(key){ return LIBRARY && LIBRARY.grid ? LIBRARY.grid[key] : null; }
+function snap(key, v){
+  const g = grid(key); if (!g) return v;
+  return g.reduce((a,b) => Math.abs(b-v) < Math.abs(a-v) ? b : a);
+}
+function snapDir(key, v, down){
+  const g = (grid(key) || []).slice().sort((a,b)=>a-b); if (!g.length) return v;
+  if (down){ const c = g.filter(x => x <= v + 1e-9); return c.length ? c[c.length-1] : g[0]; }
+  const c = g.filter(x => x >= v - 1e-9); return c.length ? c[0] : g[g.length-1];
+}
+function fmtSpec(s){ return SPEC.map(d => d.label.split(" ")[0].toLowerCase() + " " + d.dir + " " + (+s[d.key]).toFixed(d.dp) + " " + d.unit).join(" · "); }
+
+function buildSliders(){
+  $("sliders").innerHTML = SPEC.map(d => `
+    <div class="slider"><div class="r"><span>${d.label} ${d.dir}</span><b id="v_${d.key}"></b></div>
+      <input type="range" id="s_${d.key}" min="${d.min}" max="${d.max}" step="${d.step}"></div>`).join("");
+  SPEC.forEach(d => {
+    const el = $("s_" + d.key);
+    el.oninput = () => { spec[d.key] = +el.value; showSpec(); drawEye(); renderChecks(); };
+    el.onchange = () => { if (MODE === "replay"){ spec[d.key] = snap(d.key, +el.value); showSpec(); drawEye(); renderChecks(); } };
+  });
+  $("chips").innerHTML = PRESETS.map((p,i) => `<button class="chip ${p.warn?"warn":""}" data-i="${i}">${p.name}</button>`).join("");
+  $("chips").onclick = e => { const b = e.target.closest(".chip"); if (!b) return;
+    Object.assign(spec, PRESETS[+b.dataset.i].v); showSpec(); drawEye(); renderChecks();
+    $("askNote").innerHTML = `Preset <b>${PRESETS[+b.dataset.i].name}</b>: ${fmtSpec(spec)}`; };
+}
+function buildCorners(list){
+  const picks = CORNER_PICKS.slice();
+  if (list) list.forEach(n => { if (!picks.some(p => p[0] === n)) picks.push([n, n.replace(/_/g," ")]); });
+  $("corner").innerHTML = picks.map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
+  $("corner").value = spec.corner;
+  $("corner").onchange = () => { spec.corner = $("corner").value; };
+}
+function showSpec(){
+  SPEC.forEach(d => {
+    $("s_" + d.key).value = spec[d.key];
+    $("v_" + d.key).innerHTML = (+spec[d.key]).toFixed(d.dp) + `<small>${d.unit}</small>`;
+  });
+}
+
+/* ------------------------------------------------------------ plain language */
+function keywordSpec(text){
+  const t = " " + text.toLowerCase() + " ", out = {}, said = [];
+  const grab = re => { const m = t.match(re); return m ? parseFloat(m[1]) : null; };
+  let v;
+  if ((v = grab(/(\d+(?:\.\d+)?)\s*mv\b/)) != null) out.eye_height_v = v / 1000;
+  if ((v = grab(/(\d*\.?\d+)\s*v(?![a-z])/)) != null && out.eye_height_v == null) out.eye_height_v = v;
+  if ((v = grab(/(\d*\.?\d+)\s*ui\b/)) != null) out.eye_width_ui = v;
+  if ((v = grab(/(\d*\.?\d+)\s*mw\b/)) != null) out.power_mw = v;
+  if ((v = grab(/(\d*\.?\d+)\s*db\b/)) != null) out.peaking_min_db = v;
+  if (out.power_mw == null){
+    if (/ultra[- ]?low[- ]?power|very low power|tiny power/.test(t)) out.power_mw = 0.9;
+    else if (/low[- ]?power|power[- ]?efficient|battery|frugal|efficient/.test(t)) out.power_mw = 1.2;
+  }
+  if (out.eye_height_v == null && /(wide|big|clean|open|large|robust)\s+(eye|opening)|more margin|lots of margin/.test(t)) out.eye_height_v = 0.35;
+  if (out.eye_width_ui == null && /(wide|clean|open)\s+eye|jitter/.test(t)) out.eye_width_ui = 0.85;
+  if (out.peaking_min_db == null && /lossy|long (channel|trace|cable)|heavy (loss|channel)|strong(er)? (equali|boost|peaking)|more (boost|peaking)/.test(t)) out.peaking_min_db = 5;
+  if (/impossible|push it|maximum eye|max eye/.test(t) && out.eye_height_v == null) out.eye_height_v = 0.45;
+  if (/worst[- ]case|hot|slow corner|125/.test(t)) out.corner = "SS_0.95V_125C";
+  else if (/cold|fast corner|0 ?c\b/.test(t)) out.corner = "FF_1.05V_0C";
+  else if (/typical|nominal/.test(t)) out.corner = "TT_1.00V_62.5C";
+  else if (/random|any corner|surprise/.test(t)) out.corner = "random";
+  SPEC.forEach(d => { if (out[d.key] != null){ out[d.key] = Math.min(d.max, Math.max(d.min, out[d.key])); said.push(d.label.toLowerCase() + " " + d.dir + " " + out[d.key].toFixed(d.dp) + " " + d.unit); } });
+  if (out.corner) said.push("corner " + out.corner.replace(/_/g, " "));
+  return {spec: out, note: said.length ? said.join(", ") : "nothing recognised — try numbers with units (0.3 V, 1.2 mW, 5 dB) or words like low power, wide eye, lossy, worst case"};
+}
+async function applyAsk(){
+  const text = $("ask").value.trim(); if (!text) return;
+  let res = null, who = "Keyword parser";
+  if (MODE === "live" && CLAUDE){
+    $("askNote").innerHTML = "Asking Claude&hellip;";
+    try {
+      const r = await fetch(API + "/api/parse", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({text})});
+      if (r.ok){ const j = await r.json(); res = {spec: j, note: j.note}; who = "Claude"; }
+    } catch (e) {}
+  }
+  if (!res) res = keywordSpec(text);
+  SPEC.forEach(d => { if (res.spec[d.key] != null) spec[d.key] = MODE === "replay" ? snap(d.key, +res.spec[d.key]) : +res.spec[d.key]; });
+  if (res.spec.corner && MODE === "live"){ spec.corner = res.spec.corner; $("corner").value = spec.corner; }
+  showSpec(); drawEye(); renderChecks();
+  $("askNote").innerHTML = `<b>${who}:</b> ${res.note}` + (MODE === "replay" ? ` <span class="fine">(snapped to recorded runs)</span>` : "");
+}
+
+/* ------------------------------------------------------------ run state */
+let run = null;          // everything about the current run
+let timers = [], source = null, clock = null;
+const LANES = [["sac","Agent (SAC)","var(--blue)",12], ["cma","CMA-ES","var(--cma)",30], ["random","Random search","var(--rand)",30]];
+
+function freshRun(s){
+  return {spec: {...s}, corner:"", bounds:null, start:null, steps:[], last:null, prev:null, lanes:{},
+          sacDone:null, pvt:{}, pvtCount:0, ended:false, t0: performance.now(), race: $("race").checked, netlist:""};
+}
+function stopRun(){
+  timers.forEach(clearTimeout); timers = [];
+  if (source){ source.close(); source = null; }
+  if (clock){ clearInterval(clock); clock = null; }
+}
+function phase(n){
+  [...$("phases").children].forEach((el,i) => { el.className = i < n ? "done" : i === n ? "on" : ""; });
+}
+function key(s){ return `e${(+s.eye_height_v).toFixed(2)}_p${(+s.power_mw).toFixed(1)}_w${(+s.eye_width_ui).toFixed(2)}_k${(+s.peaking_min_db).toFixed(0)}`; }
+
+function startRun(){
+  if (MODE === "offline") return;
+  stopRun();
+  const s = {...spec};
+  if (MODE === "replay") SPEC.forEach(d => { s[d.key] = snap(d.key, s[d.key]); });
+  Object.assign(spec, s); showSpec();
+  run = freshRun(s);
+  $("log").innerHTML = ""; $("result").innerHTML = ""; $("raceFoot").hidden = true;
+  $("raceCard").style.display = run.race ? "" : "none";
+  renderLanes(); renderChecks(); drawEye(); drawAC();
+  phase(1); $("go").disabled = true;
+  clock = setInterval(() => { if (run && !run.ended) $("raceClock").textContent = ((performance.now() - run.t0)/1000).toFixed(1) + " s"; }, 100);
+  if (MODE === "live") runLive(s); else runReplay(s);
+}
+function runLive(s){
+  const q = new URLSearchParams({...s, race: run.race ? 1 : 0});
+  source = new EventSource(API + "/api/run?" + q.toString());
+  source.onmessage = e => handle(JSON.parse(e.data));
+  source.onerror = () => {
+    if (source){ source.close(); source = null; }
+    if (run && !run.ended){ logLine("The live engine dropped the connection. Check the server window.", "warn"); finish(); }
+  };
+}
+function runReplay(s){
+  const events = LIBRARY.runs[key(s)];
+  if (!events){ logLine("No recorded run for this combination.", "warn"); finish(); return; }
+  const D = 1100, at = (ms, ev) => timers.push(setTimeout(() => handle(ev), ms));
+  let sacEnd = 0, lastT = 0;
+  const offset = {sac:0, cma:180, random:360};
+  at(0, events[0]);
+  for (const ev of events){
+    if (ev.type === "step" && (run.race || ev.lane === "sac")){
+      const t = 500 + ev.sim * D + offset[ev.lane]; at(t, ev); lastT = Math.max(lastT, t);
+      if (ev.lane === "sac") sacEnd = Math.max(sacEnd, t);
+    }
+  }
+  for (const ev of events){
+    if (ev.type === "done" && (run.race || ev.lane === "sac")){
+      const t = 500 + ev.sims * D + offset[ev.lane] + 60; at(t, ev); lastT = Math.max(lastT, t);
+    }
+  }
+  const pvts = events.filter(e => e.type === "pvt");
+  pvts.forEach((ev, i) => at(sacEnd + 700 + i * 70, ev));
+  lastT = Math.max(lastT, sacEnd + 700 + pvts.length * 70);
+  const end = events.find(e => e.type === "end");
+  if (end) at(lastT + 300, end);
+}
+
+/* ------------------------------------------------------------ event handling */
+function handle(ev){
+  if (!run) return;
+  if (ev.type === "start"){
+    run.corner = ev.corner; run.bounds = ev.bounds; run.start = ev.start;
+    $("banner").hidden = MODE !== "replay";
+    if (MODE === "replay") $("banner").innerHTML = `<b>Replay</b> of a recorded run on the IHP models for ${fmtSpec(run.spec)}, at corner ${ev.corner.replace(/_/g," ")}. ` +
+      `Every number is from ngspice; timing is normalised to one simulation per second. Start the live server to size arbitrary specs.`;
+    renderKnobs(ev.start.params, null);
+    logLine(`<b>Random start</b> at corner ${ev.corner.replace(/_/g," ")} — ${describeParams(ev.start.params)}.`);
+    status(); return;
+  }
+  if (ev.type === "step" && ev.lane === "sac"){
+    run.prev = run.last; run.last = ev; run.steps.push(ev);
+    renderKnobs(ev.params, run.prev ? run.prev.params : run.start.params);
+    renderChecks(); drawEye(); drawAC(); laneStep(ev); caption(ev); status(); return;
+  }
+  if (ev.type === "step"){ laneStep(ev); return; }
+  if (ev.type === "done"){
+    run.lanes[ev.lane] = Object.assign(run.lanes[ev.lane] || {}, {done: ev});
+    laneDone(ev);
+    if (ev.lane === "sac"){
+      run.sacDone = ev; run.netlist = ev.netlist || "";
+      // Polishing can end on a step that is not the best; show the design that actually ships.
+      const shipped = run.steps.find(st => st.sim === ev.best_sim);
+      if (shipped && shipped !== run.last){
+        run.prev = run.last; run.last = shipped;
+        renderKnobs(shipped.params, run.prev ? run.prev.params : run.start.params);
+        drawEye(); drawAC();
+      }
+      renderChecks(); showResult(ev); phase(2); status();
+    }
+    raceFooter(); return;
+  }
+  if (ev.type === "pvt"){ run.pvt[ev.index] = ev; run.pvtCount++; paintPVT(); return; }
+  if (ev.type === "end"){ run.ended = true; if (ev.pvt_passed != null) run.pvtPassed = ev.pvt_passed; finish(); return; }
+  if (ev.type === "error"){ logLine("Engine error: " + ev.message, "warn"); finish(); }
+}
+function finish(){
+  if (!run) return;
+  run.ended = true; stopRun(); $("go").disabled = false;
+  $("raceClock").textContent = ((performance.now() - run.t0)/1000).toFixed(1) + " s";
+  if (run.sacDone){ phase(4); const b = $("tapeBtn"); if (b) b.disabled = false; }
+  if (run.sacDone && HASH.has("tape")) openTapeout();
+  else phase(0);
+  paintPVT(); raceFooter(); status();
+}
+function status(){
+  if (!run){ $("status").textContent = "idle"; return; }
+  const n = run.steps.length, t = ((performance.now() - run.t0)/1000).toFixed(1);
+  let s = n ? `simulation ${n} · ` : "";
+  s += run.corner ? run.corner.replace(/_/g," ") : "";
+  if (run.sacDone && run.sacDone.best_sim)
+    s = `sized at simulation ${run.sacDone.best_sim} of ${n} · ${run.corner.replace(/_/g," ")}`;
+  if (run.ended && !run.sacDone) s = `done · ${n} simulation${n===1?"":"s"} · ${run.corner.replace(/_/g," ")}`;
+  $("status").textContent = s;
+}
+
+/* ------------------------------------------------------------ knobs, log */
+const FMT = {
+  W_in: v => (v*1e6).toFixed(2)+" µm", R_load: v => v.toFixed(0)+" Ω", I_bias: v => (v*1e3).toFixed(3)+" mA",
+  R_s: v => v.toFixed(0)+" Ω", C_s: v => (v*1e15).toFixed(0)+" fF",
+};
+const VERB = {
+  W_in:["widened the input pair","narrowed the input pair"], R_load:["raised the load resistance","lowered the load resistance"],
+  I_bias:["raised the tail current","cut the tail current"], R_s:["added degeneration","removed degeneration"],
+  C_s:["moved the zero down","moved the zero up"],
+};
+function describeParams(p){ return Object.keys(FMT).map(k => `${k.replace("_"," ")} ${FMT[k](p[k])}`).slice(0,3).join(", ") + "…"; }
+function renderKnobs(p, prev){
+  if (!p){ $("knobs").innerHTML = `<div class="fine">The five device values appear here once a run starts.</div>`; return; }
+  const B = (run && run.bounds) || {};
+  $("knobs").innerHTML = Object.keys(FMT).map(k => {
+    const [lo,hi] = B[k] || [0,1], v = p[k], pct = Math.max(0, Math.min(100, (v-lo)/(hi-lo)*100));
+    let d = "";
+    if (prev){ const diff = v - prev[k]; if (Math.abs(diff) > Math.abs(v)*1e-3) d = `<span class="d">${diff>0?"↑":"↓"}${FMT[k](Math.abs(diff))}</span>`; }
+    return `<div class="knob"><div class="r"><span class="n">${k.replace("_"," ")}</span><span class="v">${FMT[k](v)}${d}</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
+  }).join("");
+  $("simTag").textContent = run && run.steps.length ? "sim " + run.steps.length : "start";
+}
+function logLine(html, cls){
+  const el = document.createElement("div"); el.innerHTML = html; if (cls) el.className = cls;
+  $("log").appendChild(el); $("log").scrollTop = $("log").scrollHeight;
+}
+function caption(ev){
+  const prev = run.prev ? run.prev.params : run.start.params, m = ev.metrics, B = run.bounds;
+  const moves = Object.keys(FMT).map(k => ({k, f:(ev.params[k]-prev[k])/((B[k]||[0,1])[1]-(B[k]||[0,1])[0])}))
+    .filter(x => Math.abs(x.f) > 0.01).sort((a,b) => Math.abs(b.f)-Math.abs(a.f)).slice(0,2);
+  const said = moves.map(x => VERB[x.k][x.f > 0 ? 0 : 1]).join(" and ") || "held the design";
+  const eye = m.eye_vertical_v != null ? `eye ${m.eye_vertical_v.toFixed(3)} V` : "no eye (DC failed)";
+  const pw = m.power != null ? `${(m.power*1e3).toFixed(2)} mW` : "";
+  const firstOK = run.steps.findIndex(s => s.feasible) + 1;
+  if (ev.feasible && ev.sim === firstOK)
+    logLine(`<b>Sim ${ev.sim} ✓ every spec met.</b> It ${said} — ${eye}, ${pw}.`, "ok");
+  else if (ev.feasible)
+    logLine(`<b>Sim ${ev.sim} · polishing.</b> Already feasible; it ${said} to buy margin — ${eye}, ${pw}.`, "ok");
+  else {
+    // A gate that never ran reads as a full violation, so rank only what was measured.
+    const names = {eye_vertical_v:["eye height","eye_vertical_v"], eye_horizontal_ui:["eye width","eye_horizontal_ui"],
+                   power:["power","power"], peaking_boost:["peaking","peaking_boost"],
+                   peaking_ceiling:["peaking ceiling","peaking_boost"], hd3:["HD3","hd3_db"]};
+    const ranked = Object.entries(ev.violations).filter(([k,v]) => v > 0 && (!names[k] || m[names[k][1]] != null))
+      .sort((a,b) => b[1]-a[1]);
+    const worst = ranked[0];
+    logLine(`<b>Sim ${ev.sim}.</b> It ${said} — ${eye}, ${pw}.` + (worst ? ` Still short on ${names[worst[0]] ? names[worst[0]][0] : worst[0]}.` : ""));
+  }
+}
+
+/* ------------------------------------------------------------ specification checks */
+function checkRows(m, v){
+  const s = run ? run.spec : spec;
+  return [
+    ["Eye height", `≥ ${(+s.eye_height_v).toFixed(2)} V`, m && m.eye_vertical_v != null ? m.eye_vertical_v.toFixed(3)+" V" : null, v ? v.eye_vertical_v : null],
+    ["Eye width", `≥ ${(+s.eye_width_ui).toFixed(2)} UI`, m && m.eye_horizontal_ui != null ? m.eye_horizontal_ui.toFixed(2)+" UI" : null, v ? v.eye_horizontal_ui : null],
+    ["Power", `≤ ${(+s.power_mw).toFixed(1)} mW`, m && m.power != null ? (m.power*1e3).toFixed(2)+" mW" : null, v ? v.power : null],
+    ["HF peaking", `${(+s.peaking_min_db).toFixed(1)}–12 dB`, m && m.peaking_boost != null ? m.peaking_boost.toFixed(2)+" dB" : null, v ? Math.max(v.peaking_boost||0, v.peaking_ceiling||0) : null],
+    ["HD3", "≤ −30 dB", m && m.hd3_db != null ? m.hd3_db.toFixed(1)+" dB" : null, v && m && m.hd3_db != null ? v.hd3 : null],
+  ];
+}
+function renderChecks(){
+  const st = run && run.last, m = st ? st.metrics : null, v = st ? st.violations : null;
+  const rows = checkRows(m, v);
+  $("checks").innerHTML = rows.map(([n,t,val,viol]) => {
+    const tag = val == null ? `<span class="tag idle">${st ? "not run" : "—"}</span>` : viol <= 0 ? `<span class="tag ok">pass</span>` : `<span class="tag bad">fail</span>`;
+    return `<div class="check"><span>${n}<span class="t">${t}</span></span><span><span class="v">${val || ""}</span>${tag}</span></div>`;
+  }).join("");
+  const n = rows.filter(r => r[2] != null && r[3] <= 0).length;
+  $("checkTag").textContent = st ? `${n} / ${rows.length} pass` : "targets";
+}
+
+/* ------------------------------------------------------------ race lanes */
+function renderLanes(){
+  const racing = run ? run.race : $("race").checked;
+  const lanes = racing ? LANES : LANES.slice(0,1);
+  $("lanes").innerHTML = lanes.map(([k,name,col,n]) => `
+    <div class="lane"><div class="who"><i style="background:${col}"></i>${name}</div>
+      <div class="slots" id="slots_${k}">${"<s></s>".repeat(n)}</div>
+      <div class="st" id="st_${k}">waiting</div></div>`).join("");
+}
+function laneStep(ev){
+  const box = $("slots_" + ev.lane); if (!box) return;
+  const slot = box.children[ev.sim - 1]; if (slot) slot.className = ev.feasible ? "y" : ev.lane === "sac" ? "a" : "x";
+  const L = run.lanes[ev.lane] = run.lanes[ev.lane] || {};
+  if (ev.feasible && !L.first){ L.first = ev.sim; }
+  $("st_" + ev.lane).textContent = L.first ? `✓ feasible at simulation ${L.first}` : `searching · simulation ${ev.sim}`;
+  $("st_" + ev.lane).className = "st" + (L.first ? " win" : "");
+}
+function laneDone(ev){
+  const el = $("st_" + ev.lane); if (!el) return;
+  el.textContent = ev.first_feasible ? `✓ feasible at simulation ${ev.first_feasible}` : `no feasible design in ${ev.sims} simulations`;
+  el.className = "st" + (ev.first_feasible ? " win" : "");
+}
+function raceFooter(){
+  if (!run || !run.race) return;
+  const d = k => run.lanes[k] && run.lanes[k].done;
+  if (!d("sac")) return;
+  const parts = LANES.map(([k,name]) => {
+    const x = d(k); if (!x) return `${name}: still searching`;
+    return `${name}: ${x.first_feasible ? x.first_feasible + " sims" : "none in " + x.sims}`;
+  });
+  $("raceFoot").hidden = false;
+  $("raceFoot").innerHTML = parts.join(" · ")
+    + (run.ended ? "" : `<br><span class="fine">The agent is done; the baselines keep searching with the same one-simulator budget.</span>`)
+    + `<br><span class="fine">One run is luck. Over 20 rollouts the medians are <b>2–3</b> simulations for the agent, <b>~9</b> for CMA-ES and <b>~13</b> for random search.</span>`;
+}
+
+/* ------------------------------------------------------------ result + reality check */
+function showResult(ev){
+  const b = ev.best, m = b.metrics;
+  if (ev.first_feasible){
+    const polish = ev.sims - ev.first_feasible;
+    $("result").innerHTML = `<div class="card res">
+      <h4>Sized</h4>
+      <div class="big">${ev.first_feasible}</div>
+      <div class="lbl">simulation${ev.first_feasible===1?"":"s"} from a random start to a design that meets <b>every</b> spec${polish ? `, then ${polish} more to grow the margin` : ""}. Shipping the best of them, simulation ${ev.best_sim}.</div>
+      <div class="fine">Best: eye <b>${m.eye_vertical_v.toFixed(3)} V</b> · ${m.eye_horizontal_ui.toFixed(2)} UI · ${(m.power*1e3).toFixed(2)} mW · ${m.peaking_boost.toFixed(2)} dB peaking${m.hd3_db!=null?` · HD3 ${m.hd3_db.toFixed(1)} dB`:""}</div>
+      <div class="pvtmini" id="pvtMini">${"<i></i>".repeat(45)}</div>
+      <div class="fine" id="pvtNote">Verifying the design across 45 process, voltage and temperature corners&hellip;</div>
+      <div class="btns"><button class="btn solid" id="tapeBtn" disabled>Open tape-out</button><button class="btn" id="dlBtn">Download netlist</button></div></div>`;
+  } else {
+    const k = ev.binding || {};
+    const canRelax = k.field && k.suggest != null;
+    $("result").innerHTML = `<div class="card res rc">
+      <h4>Reality check</h4>
+      <div class="big">Out of reach</div>
+      <div class="lbl">After ${ev.sims} simulations the closest design reaches <b>${k.label || "?"} ${k.reached != null ? k.reached : "?"} ${k.unit || ""}</b>; you asked for <b>${k.asked != null ? (+k.asked).toFixed(2) : "?"} ${k.unit || ""}</b>. That is the binding spec for this circuit and corner — the other specs held.</div>
+      <div class="fine">Best reached: eye ${m.eye_vertical_v != null ? m.eye_vertical_v.toFixed(3) : "—"} V · ${m.power != null ? (m.power*1e3).toFixed(2) : "—"} mW · ${m.peaking_boost != null ? m.peaking_boost.toFixed(2) : "—"} dB</div>
+      <div class="pvtmini" id="pvtMini">${"<i></i>".repeat(45)}</div>
+      <div class="fine" id="pvtNote">Checking the closest design across 45 corners&hellip;</div>
+      <div class="btns">${canRelax ? `<button class="btn solid" id="relaxBtn">Relax ${k.label.toLowerCase()} to ${k.suggest} ${k.unit} and retry</button>` : ""}<button class="btn" id="tapeBtn" disabled>Details</button></div></div>`;
+    if (canRelax) $("relaxBtn").onclick = () => {
+      let v = k.suggest;
+      if (MODE === "replay") v = snapDir(k.field, v, k.field !== "power_mw");
+      spec[k.field] = v; showSpec(); drawEye(); renderChecks(); startRun();
+    };
+    logLine(`<b>Reality check.</b> ${k.label} is the binding spec: best ${k.reached} ${k.unit} against ${(+k.asked).toFixed(2)} ${k.unit} asked.`, "warn");
+  }
+  $("tapeBtn").onclick = openTapeout;
+  const dl = $("dlBtn"); if (dl) dl.onclick = downloadNetlist;
+}
+function paintPVT(){
+  if (!run) return;
+  const cells = $("pvtMini"); if (!cells) return;
+  for (let i = 0; i < 45; i++){ const r = run.pvt[i]; cells.children[i].className = r ? (r.pass ? "ok" : "no") : ""; }
+  const done = Object.keys(run.pvt).length, passed = Object.values(run.pvt).filter(r => r.pass).length;
+  if (done) $("pvtNote").innerHTML = done < 45 ? `Verifying corners&hellip; ${passed} / ${done} pass so far`
+    : `<b style="color:${passed===45?"var(--ok)":"var(--bad)"}">${passed} / 45 corners pass</b> — 5 process × 3 supply × 3 temperature, peaking and power in spec.`;
+  if (done === 45){ phase(run.ended ? 4 : 3); const b = $("tapeBtn"); if (b) b.disabled = false; }
+}
+function downloadNetlist(){
+  if (!run || !run.netlist) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([run.netlist], {type:"text/plain"}));
+  a.download = "sized_ctle_" + key(run.spec) + ".sp"; a.click();
+}
+
+/* ------------------------------------------------------------ tape-out sheet */
+function schematic(p){
+  const t = (x,y,s,c) => `<text x="${x}" y="${y}" fill="${c||"#0A4DA6"}" font-size="9" font-family="Segoe UI,sans-serif" font-weight="600">${s}</text>`;
+  return `<svg viewBox="0 0 330 190" style="width:100%">
+    <g stroke="#7E93AC" stroke-width="1.3" fill="none" stroke-linecap="round">
+      <line x1="30" y1="16" x2="300" y2="16"/>
+      <path d="M80 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/><path d="M250 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+      <line x1="80" y1="64" x2="80" y2="80"/><line x1="250" y1="64" x2="250" y2="80"/>
+      <path d="M68 80 v22 M72 82 v18 M72 84 h8 M72 98 h8 M80 80 v4 M80 98 v4"/><path d="M262 80 v22 M258 82 v18 M258 84 h-8 M258 98 h-8 M250 80 v4 M250 98 v4"/>
+      <line x1="46" y1="91" x2="68" y2="91"/><line x1="284" y1="91" x2="262" y2="91"/>
+      <line x1="80" y1="102" x2="80" y2="118"/><line x1="250" y1="102" x2="250" y2="118"/>
+      <path d="M80 118 h14 l3-5 l6 10 l6-10 l6 10 l3-5 h40"/><path d="M250 118 h-14 l-3-5 l-6 10 l-6-10 l-6 10 l-3-5 h-40"/>
+      <path d="M80 118 v-8 h66 M184 110 h66 v8"/>
+      <line x1="156" y1="100" x2="156" y2="118"/><line x1="174" y1="100" x2="174" y2="118"/><path d="M146 110 h10 M174 110 h10"/>
+      <line x1="165" y1="118" x2="165" y2="130"/><circle cx="165" cy="140" r="10"/><path d="M165 134 v9 M161 140 l4 5 l4-5"/>
+      <line x1="165" y1="150" x2="165" y2="162"/><path d="M157 162 h16 M160 166 h10 M163 170 h4"/>
+    </g>
+    <g fill="#5B6B80" font-size="8.5" font-family="Georgia,serif">
+      <text x="32" y="12">VDD 1.2 V</text><text x="30" y="94">inP</text><text x="288" y="94">inN</text>
+      <text x="52" y="62">outP</text><text x="258" y="62">outN</text>
+    </g>
+    ${t(90,42,"R_load "+FMT.R_load(p.R_load))}${t(88,95,"W "+FMT.W_in(p.W_in))}${t(196,95,"W "+FMT.W_in(p.W_in))}
+    ${t(96,136,"R_s "+FMT.R_s(p.R_s))}${t(143,95,"C_s "+FMT.C_s(p.C_s))}${t(180,144,"I_bias "+FMT.I_bias(p.I_bias))}
+  </svg>`;
+}
+function openTapeout(){
+  if (!run || !run.sacDone) return;
+  const ev = run.sacDone, b = ev.best, m = b.metrics, s = run.spec;
+  const rows = [
+    ["Eye height", `≥ ${(+s.eye_height_v).toFixed(2)} V`, m.eye_vertical_v, v => v.toFixed(3)+" V", m.eye_vertical_v - s.eye_height_v],
+    ["Eye width", `≥ ${(+s.eye_width_ui).toFixed(2)} UI`, m.eye_horizontal_ui, v => v.toFixed(2)+" UI", m.eye_horizontal_ui - s.eye_width_ui],
+    ["Power", `≤ ${(+s.power_mw).toFixed(1)} mW`, m.power, v => (v*1e3).toFixed(2)+" mW", m.power == null ? null : s.power_mw - m.power*1e3],
+    ["HF peaking", `${(+s.peaking_min_db).toFixed(1)}–12 dB`, m.peaking_boost, v => v.toFixed(2)+" dB", m.peaking_boost == null ? null : m.peaking_boost - s.peaking_min_db],
+    ["HD3", "≤ −30 dB", m.hd3_db, v => v.toFixed(1)+" dB", m.hd3_db == null ? null : -30 - m.hd3_db],
+  ];
+  const P = ["TT","SS","FF","SF","FS"], VT = [];
+  [0.95,1.0,1.05].forEach(v => [0,62.5,125].forEach(t => VT.push([v,t])));
+  let pv = `<span></span>` + VT.map(([v,t]) => `<span>${v.toFixed(2)}×<br>${t}°C</span>`).join("");
+  P.forEach((p,pi) => { pv += `<span>${p}</span>`; VT.forEach((_,j) => { const r = run.pvt[pi*9+j];
+    pv += `<i class="${r ? (r.pass ? "ok" : "no") : ""}" title="${r ? r.name : ""}">${r && r.peaking != null ? r.peaking.toFixed(1) : ""}</i>`; }); });
+  const passed = Object.values(run.pvt).filter(r => r.pass).length;
+  $("paper").innerHTML = `
+    <div class="hd"><h2>${ev.first_feasible ? "Tape-out summary" : "Closest design"}</h2>
+      <span class="fine">${fmtSpec(s)} · sized at ${run.corner.replace(/_/g," ")} · IHP sg13g2, PSP103</span>
+      <button class="x" id="closeSheet">×</button></div>
+    <div class="grid">
+      <div>
+        <div class="card" style="margin-bottom:14px">${schematic(b.params)}</div>
+        <table><thead><tr><th>Spec</th><th>Target</th><th class="n">Achieved</th><th class="n">Margin</th></tr></thead><tbody>
+        ${rows.map(([n,t,v,f,mg]) => `<tr><td>${n}</td><td class="fine">${t}</td><td class="n">${v == null ? "—" : f(v)}</td>
+          <td class="n" style="color:${mg == null ? "var(--faint)" : mg >= 0 ? "var(--ok)" : "var(--bad)"}">${mg == null ? "—" : (mg >= 0 ? "+" : "") + (+mg).toFixed(n === "Power" || n === "HF peaking" || n === "HD3" ? 2 : 3)}</td></tr>`).join("")}
+        </tbody></table>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)">45 PVT corners · peaking in dB · ${passed}/45 pass</h4>
+        <div class="pvtbig">${pv}</div>
+        <h4 style="margin:18px 0 8px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)">Sized netlist</h4>
+        <pre id="nl"></pre>
+        <div class="btns"><button class="btn solid" id="dl2">Download sized_ctle.sp</button></div>
+      </div>
+    </div>`;
+  $("nl").textContent = run.netlist;
+  $("dl2").onclick = downloadNetlist;
+  $("closeSheet").onclick = () => { $("sheet").hidden = true; };
+  $("sheet").hidden = false;
+}
+$("sheet").onclick = e => { if (e.target.id === "sheet") $("sheet").hidden = true; };
+
+/* ------------------------------------------------------------ drawing */
+function ctxFor(id){
+  const c = $(id); if (!c) return null;
+  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) return null;
+  c.width = r.width*dpr; c.height = r.height*dpr;
+  const x = c.getContext("2d"); x.scale(dpr, dpr); x.clearRect(0,0,r.width,r.height);
+  return [x, r.width, r.height];
+}
+function drawEye(){
+  const c = ctxFor("eye"); if (!c) return; const [x,w,h] = c;
+  const pad = {l:44,r:14,t:10,b:24}, lo = -0.62, hi = 0.62;
+  const X = u => pad.l + u/2*(w-pad.l-pad.r), Y = v => pad.t + (hi-v)/(hi-lo)*(h-pad.t-pad.b);
+  const s = run ? run.spec : spec, st = run && run.last, pv = run && run.prev;
+  x.strokeStyle = "#EDF1F7"; x.lineWidth = 1;
+  for (const v of [-0.4,-0.2,0,0.2,0.4]){ x.beginPath(); x.moveTo(pad.l, Y(v)); x.lineTo(w-pad.r, Y(v)); x.stroke(); }
+  const trace = (tr, style, lw) => { x.strokeStyle = style; x.lineWidth = lw;
+    for (const t of tr){ x.beginPath(); t.forEach((mv,i) => { const u = i/(t.length-1)*2, v = mv/1000; i ? x.lineTo(X(u),Y(v)) : x.moveTo(X(u),Y(v)); }); x.stroke(); } };
+  let mid = 0;
+  if (st && st.eye && st.eye.length){ let a = Infinity, b = -Infinity; st.eye.forEach(t => t.forEach(v => { a = Math.min(a,v); b = Math.max(b,v); })); mid = (a+b)/2000; }
+  if (pv && pv.eye && pv.eye.length) trace(pv.eye, "rgba(132,148,168,.13)", 1);
+  if (st && st.eye && st.eye.length) trace(st.eye, st.feasible ? "rgba(14,124,87,.30)" : "rgba(26,111,232,.28)", 1.1);
+  const eh = +s.eye_height_v, ew = +s.eye_width_ui;
+  const bx = X(1 - ew/2), bw = X(1 + ew/2) - bx, by = Y(mid + eh/2), bh = Y(mid - eh/2) - by;
+  const good = st && st.feasible;
+  x.fillStyle = good ? "rgba(14,124,87,.10)" : "rgba(26,111,232,.07)";
+  x.strokeStyle = good ? "rgba(14,124,87,.75)" : "rgba(26,111,232,.65)";
+  x.setLineDash([5,4]); x.lineWidth = 1.4; x.fillRect(bx,by,bw,bh); x.strokeRect(bx,by,bw,bh); x.setLineDash([]);
+  x.fillStyle = good ? "#0E7C57" : "#0A4DA6"; x.font = "600 11px Segoe UI, sans-serif";
+  x.fillText(`required opening  ${eh.toFixed(2)} V × ${ew.toFixed(2)} UI`, bx + 6, by - 7);
+  x.fillStyle = "#8494A8"; x.font = "10.5px Segoe UI, sans-serif";
+  for (const u of [0,.5,1,1.5,2]) x.fillText(u.toFixed(1), X(u)-7, h-7);
+  for (const v of [-0.4,-0.2,0,0.2,0.4]) x.fillText(v.toFixed(1), 8, Y(v)+3);
+  if (!st){
+    x.fillStyle = "#8494A8"; x.font = "13px Segoe UI, sans-serif";
+    const msg = run ? "starting ngspice…" : "The eye diagram after the lossy channel appears here. The dashed box is what your specs require.";
+    x.fillText(msg, pad.l + 16, pad.t + 22);
+  }
+  const m = st ? st.metrics : null;
+  const okH = m && m.eye_vertical_v != null && m.eye_vertical_v >= eh, okW = m && m.eye_horizontal_ui != null && m.eye_horizontal_ui >= ew;
+  $("eyehead").innerHTML = m ?
+    `<span>eye height <b style="color:${okH?"var(--ok)":"var(--bad)"}">${m.eye_vertical_v != null ? m.eye_vertical_v.toFixed(3) : "—"} V</b></span>
+     <span>eye width <b style="color:${okW?"var(--ok)":"var(--bad)"}">${m.eye_horizontal_ui != null ? m.eye_horizontal_ui.toFixed(2) : "—"} UI</b></span>
+     <span>PRBS7 · 5 Gbps · after the channel</span><span class="sim">simulation ${st.sim}</span>`
+    : `<span>Eye diagram · PRBS7 at 5 Gbps after a −10 dB channel</span>`;
+}
+function drawAC(){
+  const c = ctxFor("ac"); if (!c) return; const [x,w,h] = c;
+  const pad = {l:30,r:8,t:10,b:18}, st = run && run.last;
+  x.strokeStyle = "#E3E9F2"; x.strokeRect(pad.l, pad.t, w-pad.l-pad.r, h-pad.t-pad.b);
+  if (!st || !st.ac || !st.ac.f.length){ x.fillStyle = "#8494A8"; x.font = "11.5px Segoe UI, sans-serif"; x.fillText("CTLE gain vs frequency", pad.l+8, pad.t+18); return; }
+  const f = st.ac.f, g = st.ac.g, f0 = Math.log10(f[0]), f1 = Math.log10(f[f.length-1]);
+  let lo = Math.min(...g), hi = Math.max(...g); const m = Math.max((hi-lo)*.2,.6); lo -= m; hi += m;
+  const X = v => pad.l + (Math.log10(v)-f0)/(f1-f0)*(w-pad.l-pad.r), Y = v => pad.t + (hi-v)/(hi-lo)*(h-pad.t-pad.b);
+  const nyq = 2.5e9;
+  x.strokeStyle = "#C9D6E6"; x.setLineDash([4,3]); x.beginPath(); x.moveTo(X(nyq),pad.t); x.lineTo(X(nyq),h-pad.b); x.stroke(); x.setLineDash([]);
+  x.fillStyle = "#8494A8"; x.font = "9.5px Segoe UI, sans-serif"; x.fillText("Nyquist", X(nyq)-38, h-5);
+  if (run.prev && run.prev.ac && run.prev.ac.f.length){ x.strokeStyle = "rgba(132,148,168,.35)"; x.lineWidth = 1.2; x.beginPath();
+    run.prev.ac.f.forEach((v,i) => i ? x.lineTo(X(v),Y(run.prev.ac.g[i])) : x.moveTo(X(v),Y(run.prev.ac.g[i]))); x.stroke(); }
+  x.strokeStyle = "#1A6FE8"; x.lineWidth = 2; x.beginPath(); f.forEach((v,i) => i ? x.lineTo(X(v),Y(g[i])) : x.moveTo(X(v),Y(g[i]))); x.stroke();
+  const pk = st.metrics.peaking_boost;
+  if (pk != null){ x.fillStyle = "#0F1C2E"; x.font = "600 12px Segoe UI, sans-serif"; x.fillText(pk.toFixed(2) + " dB peaking", pad.l+8, pad.t+15); }
+  x.fillStyle = "#8494A8"; x.font = "9.5px Segoe UI, sans-serif"; x.fillText(lo.toFixed(0)+" dB", 2, h-pad.b); x.fillText(hi.toFixed(0), 8, pad.t+8);
+}
+
+/* ------------------------------------------------------------ connection */
+async function connect(){
+  let health = null;
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(API + "/api/health", {signal: ctl.signal});
+    if (r.ok) health = await r.json();
+  } catch (e) {}
+  const pill = $("pill");
+  if (health && health.live){
+    MODE = "live"; CLAUDE = !!health.claude;
+    pill.className = "pill live"; pill.innerHTML = `<i></i><span>LIVE · ngspice + IHP PSP103</span>`;
+    buildCorners(health.corners);
+    $("modeNote").innerHTML = `Live: every run is a fresh ngspice rollout of the trained policy (${health.checkpoint}). ` +
+      (CLAUDE ? "Plain-language requests go to Claude." : "Plain-language requests use the keyword parser (set ANTHROPIC_API_KEY for Claude).");
+  } else if (LIBRARY && LIBRARY.runs){
+    MODE = "replay";
+    pill.className = "pill replay"; pill.innerHTML = `<i></i><span>REPLAY · ${Object.keys(LIBRARY.runs).length} recorded runs</span>`;
+    buildCorners(null); $("corner").disabled = true;
+    SPEC.forEach(d => { spec[d.key] = snap(d.key, spec[d.key]); });
+    $("modeNote").innerHTML = `Replay: runs recorded on the IHP models. Specs snap to the recorded grid and the corner is the one drawn at recording time. ` +
+      `For arbitrary specs run <code>python -m studio.server</code> and open <code>localhost:8765</code>.`;
+  } else {
+    MODE = "offline"; pill.innerHTML = `<i></i><span>Offline</span>`; $("go").disabled = true;
+    buildCorners(null);
+    $("modeNote").innerHTML = "No live engine and no recorded library. Run <code>python -m studio.server</code>.";
+  }
+  showSpec(); drawEye(); renderChecks();
+  // #preset=2&run starts a take by itself; #ask=...; #tape opens the tape-out sheet when the run ends
+  if (HASH.has("race")) $("race").checked = HASH.get("race") !== "0";
+  if (HASH.has("preset")){ Object.assign(spec, PRESETS[+HASH.get("preset")].v);
+    if (MODE === "replay") SPEC.forEach(d => { spec[d.key] = snap(d.key, spec[d.key]); });
+    showSpec(); drawEye(); renderChecks(); }
+  if (HASH.has("ask")){ $("ask").value = HASH.get("ask"); await applyAsk(); }
+  if (HASH.has("run") && MODE !== "offline") startRun();
+}
+const HASH = new URLSearchParams(location.hash.slice(1));
+
+/* ------------------------------------------------------------ boot */
+buildSliders(); renderKnobs(null); renderLanes(); renderChecks(); phase(0);
+$("go").onclick = startRun;
+$("race").onchange = () => { if (!run || run.ended) renderLanes(); };
+$("askBtn").onclick = applyAsk;
+$("ask").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey){ e.preventDefault(); applyAsk(); } });
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); if (!$("go").disabled) startRun(); }
+  if (e.key === "Escape") $("sheet").hidden = true;
+});
+window.addEventListener("resize", () => { drawEye(); drawAC(); });
+connect();
+</script>
+</body>
+</html>
