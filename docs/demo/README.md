@@ -74,3 +74,35 @@ python scripts/build_demo.py --output docs/demo/autoanalog_demo.html
 `template.html` is the editable source; `build_demo.py` inlines `rollout.json` into it at the
 `const DATA = /*__DATA__*/ null;` marker so the result is one portable file. After editing the
 template, syntax-check the built page's script before trusting it.
+
+---
+
+## `autoanalog_demo_dark.html` — the dark variant
+
+Same rollout data, a different presentation: a warm dark palette (brown-black paper, cream text,
+clay accent) and **two extra screens built around the architecture**, for a total of 16.
+
+| # | Screen | |
+|---|---|---|
+| 5 | **The architecture** | the system as a seven-layer device that opens up. Each Next lifts the next layer off the stack in an isometric exploded view; the panel on the right explains that layer and names the file it lives in. Click any layer, or any row of the index, to jump to it. |
+| 6 | **The architecture, running** | one environment step traced down the stack and back — specification → policy → environment → evaluator → ngspice → reward → replay buffer — carrying the **real numbers from simulation 3** at every stage: the actions the actor emitted, the device values they mapped to, what each ngspice gate measured, and the reward that came back. |
+
+The seven layers: Specification · SAC policy · Environment · Reward model · Evaluator ·
+ngspice + OSDI · The circuit.
+
+Build it from its own template, which shares `rollout.json` with the light page:
+
+```bash
+python scripts/build_demo.py --template docs/demo/template_dark.html \
+    --output docs/demo/autoanalog_demo_dark.html
+```
+
+Hash options are the same, plus `&lay=N` for the exploded view and `&tr=N` for the trace:
+
+```
+autoanalog_demo_dark.html#s=stack&lay=7    fully exploded, bottom layer selected
+autoanalog_demo_dark.html#s=trace&tr=5     the trace paused at the ngspice gates
+```
+
+Use whichever suits the room — the light page for a projector, the dark one for a screen
+recording. Both are self-contained and neither depends on the other.
