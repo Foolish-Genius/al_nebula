@@ -38,11 +38,21 @@ autoanalog_demo.html#step=3            open on the final design
 ## Regenerating with a different rollout
 
 ```bash
-# any trained run, any starting seed; --pvt adds the 45-corner sweep of the final design
-python scripts/export_demo_data.py reports/sac-ihp-pvt --seed 21 --pvt \
-    --training-from reports/sac-ihp-v1 --output docs/demo/rollout.json
+python scripts/export_demo_data.py reports/sac-ihp-pvt --seed 21 --hold --max-steps 10 --pvt \
+    --training-from reports/sac-ihp-v1 \
+    --baselines "CMA-ES=reports/cmaes-ihp-random-s10" "random search=reports/baseline-ihp-3000" \
+    --output docs/demo/rollout.json
 python scripts/build_demo.py --output docs/demo/autoanalog_demo.html
 ```
 
-`template.html` is the editable source; `build_demo.py`
-inlines `rollout.json` into it so the result is one portable file.
+- `--seed` picks the random starting design and PVT corner.
+- `--hold` keeps simulating after the specs pass, exactly as the policy was trained
+  (`--hold-on-success`), so the page shows margin growing instead of stopping at the first
+  feasible design. Without it the rollout ends in 2–4 simulations.
+- `--pvt` runs the 45-corner sweep of the final design for the bottom-right grid.
+- `--baselines` draws other search runs on the same simulation axis.
+- `--training-from` picks the run whose learning curve is shown (use a from-scratch run;
+  a resumed curriculum run starts already converged and looks flat).
+
+`template.html` is the editable source; `build_demo.py` inlines `rollout.json` into it so
+the result is one portable file.
