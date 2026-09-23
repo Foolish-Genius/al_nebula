@@ -133,6 +133,50 @@
   .arrow{align-self:center;color:#C3D0E0;padding:0 10px;font-size:18px}
   .rule{height:1px;background:var(--hair);margin:22px 0}
   .quote{font-family:var(--serif);font-size:22px;line-height:1.45;color:var(--ink);max-width:880px}
+
+  /* ---------- phones and small tablets ---------- */
+  @media (max-width:860px){
+    section{padding:56px 18px 74px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+    .wrap,.wrap.center{flex:0 0 auto;justify-content:flex-start}
+    #brand{top:15px;left:18px;font-size:11.5px} #brand span{display:none}
+    #count{top:15px;right:18px;font-size:11px}
+    h1{font-size:34px;margin-bottom:14px}
+    h2{font-size:26px;margin-bottom:10px}
+    .lead{font-size:15.5px;margin-bottom:20px}
+    .eyebrow{font-size:10.5px;letter-spacing:.12em;margin-bottom:10px}
+    .num{font-size:30px}
+    .grid{gap:12px}
+    .g2,.g3,.g4{grid-template-columns:1fr}
+    .card{padding:15px 17px;border-radius:12px}
+    .card h3{font-size:14.5px}
+    .quote{font-size:17px}
+    pre{font-size:10.5px;padding:12px 14px;overflow-x:auto}
+    table{font-size:12px} th,td{padding:7px 8px}
+    .card{overflow-x:auto}
+    .rule{margin:16px 0}
+    .flow{flex-direction:column;gap:10px}
+    .arrow{display:none}
+    .live{grid-template-columns:1fr;gap:12px;flex:0 0 auto}
+    .livecol{gap:10px}
+    .eyebox{flex:0 0 auto;min-height:250px}
+    .fillbox,.chartbox .body{min-height:190px}
+    .chartbox{flex:0 0 auto !important;min-height:180px}
+    .verdict{margin-top:0 !important}
+    .pvt{gap:2px;min-height:110px}
+    nav{height:62px;padding:0 18px}
+    .hint{display:none}
+    button{font-size:13px;padding:10px 15px}
+    .dot{width:5px;height:5px} .dots{gap:5px}
+  }
+  @media (max-width:430px){
+    section{padding:52px 14px 70px}
+    h1{font-size:28px} h2{font-size:22px}
+    .lead{font-size:14.5px}
+    pre{font-size:9.5px;padding:10px 12px}
+    table{font-size:11px} th,td{padding:6px 6px}
+    .dots{gap:4px} .dot{width:4px;height:4px}
+    button{padding:10px 13px}
+  }
 </style>
 </head>
 <body>
@@ -777,6 +821,17 @@ document.addEventListener("keydown", e => {
   if (e.code === "Home"){ go(0); }
   if (e.code === "End"){ go(SECTIONS.length - 1); }
 });
+
+// swipe left/right to advance on touch devices
+let tX = 0, tY = 0;
+document.addEventListener("touchstart", e => {
+  tX = e.changedTouches[0].clientX; tY = e.changedTouches[0].clientY;
+}, {passive:true});
+document.addEventListener("touchend", e => {
+  const dx = e.changedTouches[0].clientX - tX, dy = e.changedTouches[0].clientY - tY;
+  if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6){ dx < 0 ? fwd() : back(); }
+}, {passive:true});
+
 window.addEventListener("resize", () => paint());
 
 // #s=8 opens on section 8; &sim=3 opens the live section on simulation 3.
