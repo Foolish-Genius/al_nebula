@@ -2,500 +2,792 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>AutoAnalog-RL — live sizing</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoAnalog-RL</title>
 <style>
   :root{
-    --bg:#070d18; --panel:#0e1726; --panel2:#131f33; --line:#1f3050;
-    --ink:#e8eef8; --dim:#8da2c0; --accent:#38bdf8; --ok:#34d399; --bad:#fb7185; --warn:#fbbf24;
+    --paper:#FAFBFD; --card:#FFFFFF; --ink:#0F1C2E; --muted:#5B6B80; --faint:#8494A8;
+    --hair:#E3E9F2; --blue:#1A6FE8; --deep:#0A4DA6; --wash:#EEF4FD;
+    --ok:#0E7C57; --okwash:#E7F5EF; --bad:#C2453B; --badwash:#FBEDEC;
+    --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    --mono:"SF Mono",Consolas,"Roboto Mono",monospace;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-    font-family:"Segoe UI",Inter,system-ui,sans-serif;overflow:hidden}
-  #app{display:grid;grid-template-rows:auto 1fr auto;height:100vh;gap:10px;padding:12px 14px}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
 
-  header{display:flex;align-items:center;gap:14px}
-  h1{margin:0;font-size:21px;letter-spacing:.2px}
-  h1 span{color:var(--accent)}
-  .chips{display:flex;gap:7px;flex-wrap:wrap}
-  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;
-    padding:3px 10px;font-size:11.5px;color:var(--dim)}
-  .chip b{color:var(--ink);font-weight:600}
-  .spacer{flex:1}
-  .controls{display:flex;align-items:center;gap:8px}
-  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;
-    padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit}
-  button:hover{border-color:var(--accent)}
-  button.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
-  .stepper{font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);min-width:74px;text-align:center}
+  /* progress + brand */
+  #bar{position:fixed;top:0;left:0;height:2px;background:var(--blue);width:0;z-index:50;transition:width .45s ease}
+  #brand{position:fixed;top:22px;left:38px;z-index:40;font-size:13px;letter-spacing:.02em}
+  #brand b{font-weight:600}
+  #brand span{color:var(--faint)}
+  #count{position:fixed;top:22px;right:38px;z-index:40;font-size:12px;color:var(--faint);
+    font-variant-numeric:tabular-nums}
 
-  main{display:grid;grid-template-columns:330px 1fr 380px;gap:10px;min-height:0}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  /* sections */
+  main{height:100%}
+  section{position:absolute;inset:0;display:none;padding:76px 38px 92px;overflow:hidden}
+  section.on{display:flex;flex-direction:column}
+  .wrap{width:100%;max-width:1180px;margin:0 auto;flex:1;min-height:0;display:flex;flex-direction:column}
+  .wrap.center{justify-content:center}
+  .eyebrow{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);
+    font-weight:600;margin-bottom:14px}
+  h1{font-family:var(--serif);font-weight:400;font-size:64px;line-height:1.05;margin:0 0 18px;letter-spacing:-.02em}
+  h2{font-family:var(--serif);font-weight:400;font-size:40px;line-height:1.14;margin:0 0 14px;letter-spacing:-.015em}
+  .lead{font-size:18px;line-height:1.55;color:var(--muted);max-width:760px;margin:0 0 30px}
+  .lead b{color:var(--ink);font-weight:600}
+  p{margin:0 0 12px;line-height:1.6}
+  .fine{font-size:12.5px;color:var(--faint);line-height:1.55}
+
+  /* fade-in */
+  .on .wrap > *{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+  .on .wrap > *:nth-child(2){animation-delay:.05s}
+  .on .wrap > *:nth-child(3){animation-delay:.1s}
+  .on .wrap > *:nth-child(4){animation-delay:.15s}
+  .on .wrap > *:nth-child(5){animation-delay:.2s}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  /* building blocks */
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:20px 22px}
+  .card h3{margin:0 0 8px;font-size:15.5px;font-weight:600}
+  .card p{font-size:13.5px;color:var(--muted);margin:0}
+  .num{font-family:var(--serif);font-size:40px;line-height:1;letter-spacing:-.02em;margin-bottom:6px}
+  .num.blue{color:var(--blue)} .num.ok{color:var(--ok)}
+  .cap{font-size:12.5px;color:var(--muted);line-height:1.45}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair)}
+  th{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600}
+  .tag.ok{background:var(--okwash);color:var(--ok)}
+  .tag.bad{background:var(--badwash);color:var(--bad)}
+  .tag.idle{background:#F1F4F8;color:var(--faint)}
+
+  code,pre{font-family:var(--mono);font-size:12.5px}
+  pre{background:#0F1C2E;color:#D7E3F4;border-radius:12px;padding:16px 18px;margin:0;overflow:auto;line-height:1.55}
+  pre .c{color:#7FA7D4}
+  .kbd{font-family:var(--mono);font-size:11.5px;background:#F1F4F8;border:1px solid var(--hair);
+    border-radius:5px;padding:1px 6px}
+
+  /* nav */
+  nav{position:fixed;left:0;right:0;bottom:0;height:78px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 38px;background:linear-gradient(to top,var(--paper) 62%,transparent);z-index:40}
+  .dots{display:flex;gap:6px;align-items:center}
+  .dot{width:6px;height:6px;border-radius:50%;background:#D5DEEA;cursor:pointer;transition:.25s}
+  .dot.on{background:var(--blue);transform:scale(1.5)}
+  .dot.seen{background:#A9BCD4}
+  .navbtns{display:flex;gap:10px;align-items:center}
+  button{font-family:inherit;font-size:14px;border-radius:10px;cursor:pointer;border:1px solid var(--hair);
+    background:var(--card);color:var(--ink);padding:11px 20px;transition:.18s}
+  button:hover{border-color:var(--blue);color:var(--blue)}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.primary:hover{background:var(--blue);border-color:var(--blue);color:#fff}
+  button:disabled{opacity:.35;cursor:default}
+  button:disabled:hover{border-color:var(--hair);color:var(--ink)}
+  .hint{font-size:11.5px;color:var(--faint);margin-right:6px}
+
+  /* live section */
+  .live{display:grid;grid-template-columns:290px 1fr 300px;gap:20px;flex:1;min-height:0}
+  .livecol{display:flex;flex-direction:column;min-height:0;gap:12px}
+  .knob{font-size:12.5px}
+  .knob .r{display:flex;justify-content:space-between;align-items:baseline}
+  .knob .nm{color:var(--muted)}
+  .knob .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .knob .d{font-size:11px;margin-left:6px;color:var(--blue)}
+  .track{height:4px;background:#EDF1F7;border-radius:3px;margin-top:5px;position:relative;overflow:hidden}
+  .fill{position:absolute;inset:0 auto 0 0;background:var(--blue);border-radius:3px;
+    transition:width .55s cubic-bezier(.3,.8,.3,1)}
+  .specrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+    border-bottom:1px solid var(--hair);font-size:13px}
+  .specrow:last-child{border-bottom:none}
+  .specrow .sv{font-variant-numeric:tabular-nums;font-weight:600;margin-right:8px}
+  .eyebox{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;background:var(--card);
+    border:1px solid var(--hair);border-radius:14px;padding:14px 16px 10px}
+  .eyehead{display:flex;gap:26px;font-size:12.5px;color:var(--faint);flex:0 0 auto}
+  .eyehead b{font-variant-numeric:tabular-nums}
+  canvas{width:100%;height:100%;display:block}
+  .fillbox{flex:1;min-height:0;position:relative}
+  .chartbox{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:14px 16px;
     display:flex;flex-direction:column;min-height:0}
-  .panel h2{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);font-weight:600}
-
-  /* knobs */
-  .knob{margin-bottom:9px}
-  .knob .row{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px}
-  .knob .name{color:var(--dim)}
-  .knob .val{font-variant-numeric:tabular-nums;font-weight:600}
-  .knob .delta{font-size:11px;margin-left:6px}
-  .up{color:var(--ok)} .down{color:var(--warn)}
-  .track{position:relative;height:6px;background:#0a1322;border:1px solid var(--line);border-radius:4px;margin-top:4px}
-  .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#1d6fa5,var(--accent));
-    border-radius:3px;transition:width .5s cubic-bezier(.4,0,.2,1)}
-  .bounds{display:flex;justify-content:space-between;font-size:9.5px;color:#54688a;margin-top:2px}
-
-  /* specs */
-  .spec{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 0;border-bottom:1px solid #16243c}
-  .spec:last-of-type{border-bottom:none}
-  .spec .nm{font-size:13px}
-  .spec .tg{font-size:10.5px;color:var(--dim)}
-  .spec .vl{font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;text-align:right}
-  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.4px}
-  .badge.ok{background:rgba(52,211,153,.16);color:var(--ok);border:1px solid rgba(52,211,153,.4)}
-  .badge.bad{background:rgba(251,113,133,.14);color:var(--bad);border:1px solid rgba(251,113,133,.4)}
-  .verdict{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
-  .verdict .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
-  .verdict .sub{font-size:11.5px;color:var(--dim)}
-  .verdict.pass{border-color:rgba(52,211,153,.55);background:rgba(52,211,153,.08)}
-  .netlist{margin-top:10px;flex:1;min-height:0;display:flex;flex-direction:column;
-    background:#0a1322;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .netlist .nlhead{font-size:10.5px;color:var(--dim);padding:7px 10px 4px;letter-spacing:.3px}
-  .netlist pre{margin:0;padding:0 10px 10px;font-family:Consolas,monospace;font-size:11px;
-    line-height:1.45;color:#9fd8f5;overflow:auto;white-space:pre}
-  .netlist.pass{border-color:rgba(52,211,153,.4)}
-
-  canvas{width:100%;display:block}
-  .eyewrap{flex:1;min-height:0;position:relative}
-  #eye{height:100%}
-  .eyenote{position:absolute;left:10px;top:8px;font-size:12px;line-height:1.5;
-    background:rgba(7,13,24,.72);padding:6px 9px;border-radius:8px;border:1px solid var(--line)}
-  .eyenote .k{color:var(--dim)}
-
-  footer{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;height:172px}
-  .mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px 6px;
-    display:flex;flex-direction:column;min-height:0}
-  .mini h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
-  .mini .body{flex:1;min-height:0;position:relative}
-  .mini canvas{height:100%}
-  .legend{font-size:10.5px;color:var(--dim);margin-top:2px}
-  .pvtgrid{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(3,1fr);gap:3px;height:100%;padding:2px 0}
-  .cell{border-radius:2px;background:#22324f}
-  .cell.ok{background:var(--ok)} .cell.bad{background:var(--bad)}
-  .flash{animation:flash .6s ease}
-  @keyframes flash{0%{background:rgba(56,189,248,.25)}100%{background:transparent}}
+  .chartbox h3{margin:0 0 2px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .chartbox .body{flex:1;min-height:0}
+  .verdict{border:1px solid var(--hair);border-radius:12px;padding:14px 16px;background:var(--card);transition:.3s}
+  .verdict.pass{border-color:#B7E3D0;background:var(--okwash)}
+  .verdict .big{font-family:var(--serif);font-size:32px;line-height:1}
+  .verdict.pass .big{color:var(--ok)}
+  .pvt{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(3,1fr);gap:4px;height:100%}
+  .pvt i{border-radius:3px;background:#E6EBF2}
+  .pvt i.ok{background:var(--ok);opacity:.85}
+  .flow{display:flex;align-items:stretch;gap:0}
+  .step{flex:1;background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:14px 16px}
+  .step .n{font-family:var(--serif);font-size:22px;color:var(--blue);line-height:1}
+  .step h4{margin:6px 0 4px;font-size:14px;font-weight:600}
+  .step p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
+  .arrow{align-self:center;color:#C3D0E0;padding:0 10px;font-size:18px}
+  .rule{height:1px;background:var(--hair);margin:22px 0}
+  .quote{font-family:var(--serif);font-size:22px;line-height:1.45;color:var(--ink);max-width:880px}
 </style>
 </head>
 <body>
-<div id="app">
-  <header>
-    <h1>AutoAnalog<span>-RL</span> — live sizing</h1>
-    <div class="chips" id="chips"></div>
-    <div class="spacer"></div>
-    <div class="controls">
-      <button id="restart">⟲ Restart</button>
-      <button id="prev">◀</button>
-      <div class="stepper" id="stepper">step 0 / 0</div>
-      <button id="next">▶</button>
-      <button class="primary" id="play">▶ Play</button>
-      <button id="speed">1×</button>
-    </div>
-  </header>
+<div id="bar"></div>
+<div id="brand"><b>AutoAnalog-RL</b> <span>· Nebula · AI/ML for Analog Circuit Design</span></div>
+<div id="count"></div>
 
-  <main>
-    <section class="panel">
-      <h2>Design under test</h2>
-      <svg viewBox="0 0 300 168" style="width:100%;margin:-2px 0 8px">
-        <g stroke="#7f95b8" stroke-width="1.3" fill="none" stroke-linecap="round">
-          <line x1="20" y1="14" x2="280" y2="14"/>
-          <text x="24" y="10" fill="#8da2c0" font-size="8" stroke="none">VDD 1.2 V</text>
-          <path d="M70 14 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
-          <path d="M230 14 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
-          <text x="34" y="44" fill="#8da2c0" font-size="8.5" stroke="none">R_load</text>
-          <text x="240" y="44" fill="#8da2c0" font-size="8.5" stroke="none">R_load</text>
-          <circle cx="70" cy="62" r="2.4" fill="#38bdf8" stroke="none"/>
-          <circle cx="230" cy="62" r="2.4" fill="#38bdf8" stroke="none"/>
-          <text x="44" y="60" fill="#38bdf8" font-size="8.5" stroke="none">outP</text>
-          <text x="236" y="60" fill="#38bdf8" font-size="8.5" stroke="none">outN</text>
-          <line x1="70" y1="62" x2="70" y2="76"/><line x1="230" y1="62" x2="230" y2="76"/>
-          <path d="M58 76 v22 M62 78 v18 M62 80 h8 M62 94 h8 M70 76 v4 M70 94 v4"/>
-          <path d="M242 76 v22 M238 78 v18 M238 80 h-8 M238 94 h-8 M230 76 v4 M230 94 v4"/>
-          <line x1="40" y1="87" x2="58" y2="87"/><line x1="260" y1="87" x2="242" y2="87"/>
-          <text x="22" y="90" fill="#8da2c0" font-size="8.5" stroke="none">inP</text>
-          <text x="264" y="90" fill="#8da2c0" font-size="8.5" stroke="none">inN</text>
-          <text x="74" y="86" fill="#8da2c0" font-size="7.5" stroke="none">M1 W_in</text>
-          <text x="196" y="86" fill="#8da2c0" font-size="7.5" stroke="none">M2 W_in</text>
-          <line x1="70" y1="98" x2="70" y2="112"/><line x1="230" y1="98" x2="230" y2="112"/>
-          <path d="M70 112 h12 l3-5 l6 10 l6-10 l6 10 l3-5 h44"/>
-          <path d="M230 112 h-12 l-3-5 l-6 10 l-6-10 l-6 10 l-3-5 h-44"/>
-          <text x="92" y="128" fill="#8da2c0" font-size="8.5" stroke="none">R_s</text>
-          <text x="196" y="128" fill="#8da2c0" font-size="8.5" stroke="none">R_s</text>
-          <path d="M70 112 v-8 h60 M170 104 h60 v8"/>
-          <line x1="140" y1="96" x2="140" y2="112"/><line x1="160" y1="96" x2="160" y2="112"/>
-          <path d="M130 104 h10 M160 104 h10"/>
-          <text x="134" y="92" fill="#8da2c0" font-size="8.5" stroke="none">C_s</text>
-          <line x1="150" y1="112" x2="150" y2="122"/>
-          <circle cx="150" cy="132" r="10"/><path d="M150 126 v9 M146 132 l4 5 l4-5"/>
-          <line x1="150" y1="142" x2="150" y2="152"/><path d="M142 152 h16 M145 156 h10 M148 160 h4"/>
-          <text x="164" y="136" fill="#8da2c0" font-size="8.5" stroke="none">I_bias</text>
-        </g>
-      </svg>
-      <div id="knobs"></div>
-      <div class="legend" id="corner"></div>
-    </section>
+<main id="main"></main>
 
-    <section class="panel">
-      <h2>Eye diagram after the lossy channel</h2>
-      <div class="eyewrap">
-        <canvas id="eye"></canvas>
-        <div class="eyenote" id="eyenote"></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Target specification</h2>
-      <div id="specs"></div>
-      <div class="verdict" id="verdict">
-        <div class="big" id="rewardVal">—</div>
-        <div class="sub" id="rewardSub">reward for this design</div>
-      </div>
-      <div class="netlist" id="netlist"><div class="nlhead">sized_ctle.sp — written when the design passes</div><pre id="nlbody">waiting for a feasible design…</pre></div>
-    </section>
-  </main>
-
-  <footer>
-    <div class="mini"><h3>AC response (CTLE alone)</h3><div class="body"><canvas id="ac"></canvas></div></div>
-    <div class="mini"><h3>Reward vs simulations — policy against conventional search</h3><div class="body"><canvas id="trace"></canvas></div>
-      <div class="legend" id="traceLegend"></div></div>
-    <div class="mini" id="lastPanel"><h3>What the policy learned from</h3><div class="body"><canvas id="train"></canvas></div>
-      <div class="legend" id="trainLegend"></div></div>
-  </footer>
-</div>
+<nav>
+  <div class="dots" id="dots"></div>
+  <div class="navbtns">
+    <span class="hint">press <span class="kbd">→</span></span>
+    <button id="back">Back</button>
+    <button class="primary" id="fwd">Next</button>
+  </div>
+</nav>
 
 <script>
 const DATA = /*__DATA__*/ null;
+const $ = id => document.getElementById(id);
+const NL = String.fromCharCode(10);
+const S = DATA.specs;
 
-const $ = (id) => document.getElementById(id);
-const fmt = {
-  W_in:  v => (v*1e6).toFixed(2) + " µm",
-  R_load:v => v.toFixed(0) + " Ω",
-  I_bias:v => (v*1e3).toFixed(3) + " mA",
-  R_s:   v => v.toFixed(0) + " Ω",
-  C_s:   v => (v*1e15).toFixed(0) + " fF",
-  dfe_tap: v => v.toFixed(3),
+/* ---------------- section content ---------------- */
+const firstOK = DATA.steps.findIndex(s => s.all_specs_met) + 1;
+const B = DATA.baselines || {};
+const last = DATA.steps[DATA.steps.length - 1];
+const lastM = last.metrics;
+
+const SECTIONS = [
+{ id:"hero", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Round 0 · automated analog sizing</div>
+    <h1>An agent that sizes a<br>high-speed equalizer.</h1>
+    <p class="lead">AutoAnalog-RL sizes a PCIe Gen 2 receiver equalizer — a one-stage CTLE and a one-tap DFE —
+      by driving ngspice directly, with no human in the loop. On the real IHP sg13g2 130 nm models it reaches a
+      design that passes <b>every specification and all 45 PVT corners</b> in two to three simulations.</p>
+    <div class="grid g4" style="max-width:900px">
+      <div><div class="num blue">${firstOK}</div><div class="cap">simulations from a random start to a passing design</div></div>
+      <div><div class="num">45/45</div><div class="cap">process, voltage and temperature corners</div></div>
+      <div><div class="num">5</div><div class="cap">device parameters the agent controls</div></div>
+      <div><div class="num">0</div><div class="cap">human interventions</div></div>
+    </div>
+  </div>`},
+
+{ id:"problem", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The problem</div>
+    <h2>Five knobs, seven specifications,<br>and a simulator in the way.</h2>
+    <p class="lead">Every specification is a function of the same five device values, and the function is only
+      available through SPICE. Nothing is separable, so a sweep explodes and a generic optimiser spends its budget
+      in regions that do not even bias correctly.</p>
+    <div class="grid g3">
+      <div class="card"><h3>Everything is coupled</h3><p>Widening the input pair raises gain and peaking — and power,
+        and input capacitance. Degeneration buys linearity and costs DC gain.</p></div>
+      <div class="card"><h3>The spec that matters is hidden</h3><p>The eye opening only exists after a transient
+        through a lossy channel. A frequency-domain optimum can still close the eye.</p></div>
+      <div class="card"><h3>Evaluation is expensive</h3><p>Each candidate costs three ngspice analyses.
+        A blind search spends most of them on designs that fail immediately.</p></div>
+    </div>
+  </div>`},
+
+{ id:"spec", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The target</div>
+    <h2>The specification the agent is given.</h2>
+    <p class="lead">These are the numbers the reward is built from. Our internal eye targets are deliberately
+      tighter than the brief's, so the policy delivers margin rather than a marginal pass.</p>
+    <div class="grid g2">
+      <div class="card" style="padding:6px 8px">
+        <table><thead><tr><th>Specification</th><th class="n">Target</th></tr></thead><tbody>
+          <tr><td>HF peaking at ${DATA.nyquist_ghz} GHz Nyquist</td><td class="n">${S.peaking_min_db}–${S.peaking_max_db} dB</td></tr>
+          <tr><td>Power</td><td class="n">≤ ${(S.power_max_w*1e3).toFixed(0)} mW</td></tr>
+          <tr><td>Eye height after channel</td><td class="n">≥ ${S.eye_vertical_min_v} V</td></tr>
+          <tr><td>Eye width</td><td class="n">≥ ${S.eye_horizontal_min_ui} UI</td></tr>
+          <tr><td>HD3 linearity</td><td class="n">≤ ${S.hd3_max_db} dB</td></tr>
+          <tr><td>Input-referred noise</td><td class="n">≤ 1.5 mV rms</td></tr>
+          <tr><td>PVT corners</td><td class="n">45 / 45</td></tr>
+        </tbody></table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center">
+        <div class="card"><h3>Signalling</h3><p>NRZ PRBS7 at ${DATA.data_rate_gbps} Gbps, one unit interval
+          ${DATA.unit_interval_ps} ps, through a two-section RC channel with ${DATA.channel_loss_db} dB of loss at Nyquist.</p></div>
+        <div class="card"><h3>Technology</h3><p>IHP sg13g2 130 nm open PDK, PSP103 transistor models compiled with
+          OpenVAF to OSDI and run natively in ngspice — about 0.6 s per agent step with eight simulators in parallel.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"circuit", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The circuit</div>
+    <h2>A source-degenerated CTLE.</h2>
+    <p class="lead">Degeneration throws away gain at DC and returns it at high frequency: <b>C<sub>s</sub></b> shorts
+      <b>R<sub>s</sub></b> as frequency rises, placing a zero near 1/(2·R<sub>s</sub>C<sub>s</sub>) and boosting the
+      band the channel attenuated.</p>
+    <div class="grid g2" style="align-items:center">
+      <div class="card">${schematicSVG()}</div>
+      <div class="card" style="padding:6px 8px">
+        <table><thead><tr><th>Parameter</th><th class="n">Range</th><th>Raises</th></tr></thead><tbody>
+          <tr><td>W<sub>in</sub> input width</td><td class="n">0.5 – 50 µm</td><td class="fine">gain, capacitance</td></tr>
+          <tr><td>R<sub>load</sub></td><td class="n">100 – 1000 Ω</td><td class="fine">gain, costs headroom</td></tr>
+          <tr><td>I<sub>bias</sub> tail current</td><td class="n">0.1 – 2 mA</td><td class="fine">gain, power, linearity</td></tr>
+          <tr><td>R<sub>s</sub> degeneration</td><td class="n">10 – 500 Ω</td><td class="fine">peaking, linearity</td></tr>
+          <tr><td>C<sub>s</sub> degeneration</td><td class="n">1 fF – 1 pF</td><td class="fine">moves the zero</td></tr>
+          <tr><td>DFE tap <span class="fine">(optional 6th)</span></td><td class="n">−0.5 … +0.5</td><td class="fine">cancels post-cursor ISI</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"loop", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The method</div>
+    <h2>A closed loop around the simulator.</h2>
+    <p class="lead">The agent proposes a small change to the five values; the evaluator renders the netlist and runs
+      the gates in a <b>fail-fast order</b>; the measured metrics become a reward and the next observation.</p>
+    <div class="flow">
+      <div class="step"><div class="n">01</div><h4>Agent</h4><p>Reads the design and its measured metrics, outputs a step on each knob.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">02</div><h4>Netlist</h4><p>Normalised action mapped to device values and written into the SPICE deck.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">03</div><h4>ngspice</h4><p>DC → AC → PRBS transient → HD3, stopping at the first failure.</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">04</div><h4>Reward</h4><p>Normalised spec violations, a power charge, a bonus with margin.</p></div>
+    </div>
+    <div class="rule"></div>
+    <div class="grid g4">
+      <div class="card"><h3>1 · <code>.op</code></h3><p>Does it bias? If not: reward −10 and nothing else is simulated.</p></div>
+      <div class="card"><h3>2 · <code>.ac</code></h3><p>Peaking at Nyquist minus DC gain, and supply power.</p></div>
+      <div class="card"><h3>3 · <code>.tran</code></h3><p>PRBS7 through the channel; eye height and width, DFE tap.</p></div>
+      <div class="card"><h3>4 · HD3</h3><p>Single tone; only run once every other specification already passes.</p></div>
+    </div>
+  </div>`},
+
+{ id:"reward", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The reward</div>
+    <h2>How a circuit measurement<br>becomes a number to maximise.</h2>
+    <pre style="max-width:940px"><span class="c">// violation = how far a spec is missed, normalised so 1.0 = a full spec's worth</span>
+reward = − Σ wᵢ · violationᵢ  −  w_eff · min(1, P / P_max)
+         + [all specs met] · ( 20 + w_margin · min(1, tightest margin) )
+
+<span class="c">// DC operating point failed</span>
+reward = −10</pre>
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card"><h3>A gradient from anywhere</h3><p>The violation sum points toward feasibility even when
+        every specification is missed, so the agent always knows which way to move.</p></div>
+      <div class="card"><h3>A gradient inside</h3><p>The continuous power charge means two passing designs are not
+        equal — the cheaper one scores higher.</p></div>
+      <div class="card"><h3>Margin, not the edge</h3><p>The success bonus plus a margin term pulls the design into
+        the feasible region instead of onto its boundary.</p></div>
+    </div>
+  </div>`},
+
+{ id:"agent", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The agent</div>
+    <h2>Soft Actor-Critic, because simulations are expensive.</h2>
+    <div class="grid g2" style="align-items:start">
+      <div>
+        <p class="lead" style="margin-bottom:18px">A critic learns what a move is worth; an actor learns to make
+          moves the critic rates highly. Every transition is stored and replayed hundreds of times, so one ngspice
+          evaluation trains the networks again and again.</p>
+        <div class="grid" style="gap:12px">
+          <div class="card"><h3>Observation · 15 numbers</h3><p>5 normalised knob values · DC-valid flag ·
+            4 scaled metrics · 5 spec violations. The agent sees how the circuit <em>responded</em>, which is what
+            lets one policy work at any corner.</p></div>
+          <div class="card"><h3>Action · a step, not a guess</h3><p>Five values in [−1, 1], scaled by 0.2 and added
+            to the current design. Incremental moves keep the value function smooth.</p></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="chartbox" style="height:190px"><h3>What it learned · feasible steps, smoothed</h3>
+        <div class="body fillbox"><canvas id="train"></canvas></div></div>
+      <div class="card" style="padding:6px 8px">
+        <table><thead><tr><th>Setting</th><th class="n">Value</th></tr></thead><tbody>
+          <tr><td>Algorithm</td><td class="n">SAC (stable-baselines3)</td></tr>
+          <tr><td>Parallel environments</td><td class="n">8 × ngspice</td></tr>
+          <tr><td>Episode</td><td class="n">30 steps, random start</td></tr>
+          <tr><td>Held after success</td><td class="n">yes — margin keeps paying</td></tr>
+          <tr><td>Batch / gradient steps</td><td class="n">256 / 1 per step</td></tr>
+          <tr><td>Entropy coefficient</td><td class="n">auto, from 0.1</td></tr>
+          <tr><td>Random warm-up</td><td class="n">500 steps</td></tr>
+          <tr><td>Training cost</td><td class="n">≈ 2 h on one machine, once</td></tr>
+        </tbody></table>
+      </div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"live", live:true, html:`
+  <div class="wrap">
+    <div class="eyebrow">Live · a real rollout on the IHP models</div>
+    <h2 style="font-size:32px;margin-bottom:6px">Watch it size the circuit.</h2>
+    <p class="fine" style="margin-bottom:16px">Random starting design at a random PVT corner
+      (<b id="cornerName"></b>). Every number below came out of ngspice. Press <span class="kbd">→</span> to run the next simulation.</p>
+    <div class="live">
+      <div class="livecol">
+        <div class="card" style="padding:14px 16px"><div id="knobs"></div></div>
+        <div class="card" style="padding:12px 16px"><div class="cap" id="movecap"></div></div>
+        <div class="verdict" id="verdict" style="margin-top:auto">
+          <div class="big" id="rewardVal">—</div>
+          <div class="cap" id="rewardSub">reward</div>
+        </div>
+      </div>
+      <div class="livecol">
+        <div class="eyebox"><div class="eyehead" id="eyenote"></div><div class="fillbox"><canvas id="eye"></canvas></div></div>
+      </div>
+      <div class="livecol">
+        <div class="card" style="padding:12px 16px"><div id="specs"></div></div>
+        <div class="chartbox" style="flex:1"><h3 id="miniTitle">AC response</h3><div class="body fillbox"><canvas id="ac"></canvas></div></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"results", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Results</div>
+    <h2>Seven runs on the real models.</h2>
+    <p class="lead">Every policy design passes peaking, power, eye height and width, HD3, noise and all 45 corners.
+      Three seeds of the base configuration agree to within a few percent.</p>
+    <div class="card" style="padding:6px 8px">
+      <table><thead><tr><th>Run</th><th>Variant</th><th class="n">Rollouts feasible</th><th class="n">Simulations to feasible</th><th>Best design</th></tr></thead><tbody>
+        <tr><td>seed 1 · 2 · 3</td><td class="fine">base configuration</td><td class="n">60 / 60</td><td class="n">2 – 3</td><td class="fine">0.32–0.35 V · 1.2 mW · 45/45</td></tr>
+        <tr><td>hd3</td><td class="fine">HD3 enforced in the reward</td><td class="n">20 / 20</td><td class="n">2.5</td><td class="fine">0.335 V · 1.24 mW · −58 dB</td></tr>
+        <tr><td>pvt</td><td class="fine">curriculum across 45 corners</td><td class="n">24 / 24</td><td class="n">2</td><td class="fine">0.370 V · 1.12 mW · −61.9 dB</td></tr>
+        <tr><td>equalizer</td><td class="fine">CTLE + DFE tap in the action</td><td class="n">20 / 20</td><td class="n">3</td><td class="fine">0.355 V post-DFE · 45/45</td></tr>
+        <tr><td>gen1</td><td class="fine">retuned to 1.25 GHz Nyquist</td><td class="n">20 / 20</td><td class="n">2</td><td class="fine">5.23 dB @ 1.25 GHz · 45/45</td></tr>
+      </tbody></table>
+    </div>
+    <div class="grid g4" style="margin-top:22px">
+      <div><div class="num blue">2.53 ± 0.06</div><div class="cap">mean simulations to a feasible design, over three seeds</div></div>
+      <div><div class="num">~2 000</div><div class="cap">environment steps to converge, every run</div></div>
+      <div><div class="num">95 %</div><div class="cap">of late training steps meet every specification</div></div>
+      <div><div class="num">0.6 s</div><div class="cap">per environment step, eight simulators wide</div></div>
+    </div>
+  </div>`},
+
+{ id:"baselines", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Comparison</div>
+    <h2>Against conventional search.</h2>
+    <p class="lead">Same models, same reward. The policy is <b>trained once</b> and then sizes any new instance;
+      CMA-ES and random search start from scratch every time.</p>
+    <div class="grid g2" style="align-items:stretch">
+      <div class="chartbox" style="min-height:300px"><h3>Reward vs simulations</h3>
+        <div class="body"><canvas id="race"></canvas></div>
+        <div class="fine" id="raceLegend" style="margin-top:6px"></div></div>
+      <div class="card" style="padding:6px 8px;display:flex;align-items:center">
+        <table><thead><tr><th>Method</th><th class="n">First feasible</th><th class="n">Per new design</th></tr></thead><tbody>
+          <tr><td><b>SAC policy</b></td><td class="n">sim ${firstOK}</td><td class="n">2–3 simulations</td></tr>
+          <tr><td>CMA-ES</td><td class="n">sim ${(B["CMA-ES"]||{}).first_feasible ?? "—"}</td><td class="n">~10, then 400 to refine</td></tr>
+          <tr><td>Random search</td><td class="n">sim ${(B["random search"]||{}).first_feasible ?? "—"}</td><td class="n">~13 per feasible hit</td></tr>
+          <tr><td>AC-only bounded search</td><td class="n">never</td><td class="n">eye 0.160 V — fails</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <p class="fine" style="margin-top:16px;max-width:900px">Given 400 simulations per design CMA-ES reaches the same
+      quality — we say so in the report. The policy's advantage is amortisation: one training run, then a couple of
+      simulations for a new start, a new corner, or a re-weighted reward.</p>
+  </div>`},
+
+{ id:"pvt", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Robustness</div>
+    <h2>Trained across the corners,<br>not just checked at them.</h2>
+    <p class="lead">Stage one trains at the nominal corner. Stage two resumes the same policy and simulates every
+      episode at a random one of the 45 corners — without telling it which, so it has to read the corner from the
+      metrics it observes.</p>
+    <div class="grid g2" style="align-items:center">
+      <div class="chartbox" style="height:210px"><h3>45 corners · this design</h3>
+        <div class="body"><div class="pvt" id="pvtGrid"></div></div>
+        <div class="fine" id="pvtNote" style="margin-top:8px"></div></div>
+      <div class="grid" style="gap:14px">
+        <div class="card"><h3>24 / 24 rollouts</h3><p>started at random designs <em>and</em> random corners reached a
+          fully passing design — median two simulations.</p></div>
+        <div class="card"><h3>95 – 96 % feasible</h3><p>of training steps from the first window, per process corner:
+          SS 97 · FS 96 · FF 95 · TT 95 · SF 94.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"extensions", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Beyond the base loop</div>
+    <h2>Three extensions.</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Tunable Nyquist</h3><p style="margin-bottom:10px">The data rate is a specification input.
+        Retargeting the same policy to 1.25 GHz — PCIe Gen 1 — gives <b>5.23 dB</b> of peaking where the 2.5 GHz
+        design gave only 2.87, with 20/20 rollouts feasible.</p>
+        <pre style="font-size:11px;padding:10px 12px">--spec nyquist_frequency_hz=1.25e9</pre></div>
+      <div class="card"><h3>The whole equalizer</h3><p style="margin-bottom:10px">A sixth action sizes the one-tap DFE.
+        The eye is measured against the <em>transmitted</em> bits with error propagation modelled; training holds a
+        0.51 V post-DFE eye against 0.35 V for the CTLE alone.</p>
+        <pre style="font-size:11px;padding:10px 12px">--equalizer</pre></div>
+      <div class="card"><h3>Plain-language weights</h3><p style="margin-bottom:10px">An engineer says what matters and
+        the reward weights follow — Claude produces them as validated JSON, with a keyword parser as the offline
+        fallback.</p>
+        <pre style="font-size:11px;padding:10px 12px">"power matters much more
+ than eye margin"
+→ power ×3 · eye ×0.33</pre></div>
+    </div>
+  </div>`},
+
+{ id:"findings", html:`
+  <div class="wrap center">
+    <div class="eyebrow">What the agent found</div>
+    <h2>Two measurement flaws,<br>exposed by being exploited.</h2>
+    <p class="quote" style="margin-bottom:26px">An optimiser that can exploit a metric will find its flaws before you do.
+      Both of these had survived the manual flow; both are now fixed and unit-tested.</p>
+    <div class="grid g2">
+      <div class="card"><h3>HD3 read −25 dB on every design</h3>
+        <p style="margin-bottom:8px">The FFT analysed 2.5 cycles of a 100 MHz tone with a rectangular window, so the
+        fundamental fell between bins and its leakage filled the 300 MHz bin. Sweeping every knob could not move the
+        number — that is what gave it away.</p>
+        <p><b style="color:var(--ok)">Fixed:</b> integer-cycle Hann window → −58 dB. The circuit was always linear enough.</p></div>
+      <div class="card"><h3>The DFE eye rewarded its own tap</h3>
+        <p style="margin-bottom:8px">The eye was labelled by the DFE's own decisions, so a large tap separated the two
+        classes by itself. The agent drove the tap to its bound and reported 0.70 V while the receiver decided 54 of
+        127 bits wrongly.</p>
+        <p><b style="color:var(--ok)">Fixed:</b> measured against the transmitted PRBS bits, bit errors counted, zero eye on any error.</p></div>
+    </div>
+  </div>`},
+
+{ id:"deliverables", html:`
+  <div class="wrap center">
+    <div class="eyebrow">What ships</div>
+    <h2>Specifications in, a sized circuit out.</h2>
+    <p class="lead">Not an RL score — an actual netlist with the device values, the model source and the DFE tap,
+      alongside every measurement that justified it.</p>
+    <div class="grid g2" style="align-items:start">
+      <pre id="nlOut"></pre>
+      <div class="grid" style="gap:12px">
+        <div class="card"><h3>Per design</h3><p><code>sized_ctle.sp</code> · <code>validation.json</code> with every
+          gate result, the 45-corner sweep, HD3, noise and area · eye, AC and PVT plots.</p></div>
+        <div class="card"><h3>Per run</h3><p>Per-step CSV, monitor files, checkpoints every 4k steps, the final model,
+          and the exact configuration used.</p></div>
+        <div class="card"><h3>Reproducible</h3><p>One command per stage, 59 tests that run without a simulator, and a
+          Windows toolchain for the PSP103 OSDI models.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"close", html:`
+  <div class="wrap center">
+    <div class="eyebrow">In summary</div>
+    <h1 style="font-size:52px">Reinforcement learning,<br>closed around SPICE.</h1>
+    <p class="lead">A trained policy sizes a PCIe Gen 2 equalizer from a random start in two to three simulations,
+      passes every measured specification and all 45 PVT corners, retargets to a new data rate, and writes the netlist.
+      Random search needs about thirteen simulations per feasible design; CMA-ES about nine, every time.</p>
+    <div class="rule"></div>
+    <div class="grid g3">
+      <div><div class="num ok">${firstOK}</div><div class="cap">simulations to a passing design</div></div>
+      <div><div class="num ok">45/45</div><div class="cap">PVT corners</div></div>
+      <div><div class="num ok">59</div><div class="cap">automated tests</div></div>
+    </div>
+    <p class="fine" style="margin-top:26px">github.com/Foolish-Genius/al_nebula</p>
+  </div>`},
+];
+
+/* ---------------- schematic ---------------- */
+function schematicSVG(){
+  return `<svg viewBox="0 0 300 172" style="width:100%">
+    <g stroke="#7E93AC" stroke-width="1.25" fill="none" stroke-linecap="round">
+      <line x1="20" y1="16" x2="280" y2="16"/>
+      <path d="M70 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+      <path d="M230 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+      <line x1="70" y1="64" x2="70" y2="78"/><line x1="230" y1="64" x2="230" y2="78"/>
+      <path d="M58 78 v22 M62 80 v18 M62 82 h8 M62 96 h8 M70 78 v4 M70 96 v4"/>
+      <path d="M242 78 v22 M238 80 v18 M238 82 h-8 M238 96 h-8 M230 78 v4 M230 96 v4"/>
+      <line x1="40" y1="89" x2="58" y2="89"/><line x1="260" y1="89" x2="242" y2="89"/>
+      <line x1="70" y1="100" x2="70" y2="114"/><line x1="230" y1="100" x2="230" y2="114"/>
+      <path d="M70 114 h12 l3-5 l6 10 l6-10 l6 10 l3-5 h44"/>
+      <path d="M230 114 h-12 l-3-5 l-6 10 l-6-10 l-6 10 l-3-5 h-44"/>
+      <path d="M70 114 v-8 h60 M170 106 h60 v8"/>
+      <line x1="140" y1="98" x2="140" y2="114"/><line x1="160" y1="98" x2="160" y2="114"/>
+      <path d="M130 106 h10 M160 106 h10"/>
+      <line x1="150" y1="114" x2="150" y2="124"/>
+      <circle cx="150" cy="134" r="10"/><path d="M150 128 v9 M146 134 l4 5 l4-5"/>
+      <line x1="150" y1="144" x2="150" y2="154"/><path d="M142 154 h16 M145 158 h10 M148 162 h4"/>
+    </g>
+    <g fill="#5B6B80" font-size="8.5" font-family="Georgia,serif">
+      <text x="22" y="12">VDD 1.2 V</text>
+      <text x="34" y="46">R_load</text><text x="240" y="46">R_load</text>
+      <text x="44" y="62" fill="#1A6FE8">outP</text><text x="236" y="62" fill="#1A6FE8">outN</text>
+      <text x="22" y="92">inP</text><text x="264" y="92">inN</text>
+      <text x="76" y="88" font-size="7.5">M1</text><text x="212" y="88" font-size="7.5">M2</text>
+      <text x="92" y="130">R_s</text><text x="196" y="130">R_s</text>
+      <text x="134" y="94">C_s</text><text x="164" y="138">I_bias</text>
+    </g>
+  </svg>`;
+}
+
+/* ---------------- live rendering ---------------- */
+const FMT = {
+  W_in: v => (v*1e6).toFixed(2)+" µm", R_load: v => v.toFixed(0)+" Ω",
+  I_bias: v => (v*1e3).toFixed(3)+" mA", R_s: v => v.toFixed(0)+" Ω",
+  C_s: v => (v*1e15).toFixed(0)+" fF", dfe_tap: v => v.toFixed(3),
 };
-const LABEL = {W_in:"W_in  input width", R_load:"R_load", I_bias:"I_bias  tail current",
-               R_s:"R_s  degeneration", C_s:"C_s  degeneration", dfe_tap:"DFE tap"};
+const LABEL = {W_in:"W_in", R_load:"R_load", I_bias:"I_bias", R_s:"R_s", C_s:"C_s", dfe_tap:"DFE tap"};
 
-let current = -1, playing = false, timer = null, speed = 1;
-const SPEEDS = [1, 1.6, 2.6];
-
-/* ---------- header ---------- */
-function chips(){
-  const s = DATA.specs;
-  const items = [
-    ["model", DATA.model_source.replace("_ngspice"," · ngspice")],
-    ["data rate", DATA.data_rate_gbps + " Gbps (" + DATA.nyquist_ghz + " GHz Nyquist)"],
-    ["channel", DATA.channel_loss_db + " dB @ Nyquist"],
-    ["PVT corner", DATA.corner],
-    ["policy", DATA.run + " · " + DATA.checkpoint],
-  ];
-  $("chips").innerHTML = items.map(([k,v]) => `<div class="chip">${k} <b>${v}</b></div>`).join("");
-  $("corner").textContent = "starting design drawn at random · corner " + DATA.corner;
-}
-
-/* ---------- knobs ---------- */
-function knobs(step, prev){
-  const names = Object.keys(step.parameters);
-  $("knobs").innerHTML = names.map(n => {
-    const [lo, hi] = DATA.bounds[n] || [-0.5, 0.5];
-    const v = step.parameters[n];
-    const pct = Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
-    let delta = "";
-    if (prev){
-      const d = v - prev.parameters[n];
-      if (Math.abs(d) > Math.abs(v) * 1e-4){
-        const cls = d > 0 ? "up" : "down";
-        delta = `<span class="delta ${cls}">${d > 0 ? "▲" : "▼"} ${fmt[n] ? fmt[n](Math.abs(d)) : Math.abs(d).toFixed(3)}</span>`;
-      }
-    }
-    return `<div class="knob">
-      <div class="row"><span class="name">${LABEL[n] || n}</span>
-        <span class="val">${fmt[n] ? fmt[n](v) : v.toFixed(3)}${delta}</span></div>
-      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
-      <div class="bounds"><span>${fmt[n] ? fmt[n](lo) : lo}</span><span>${fmt[n] ? fmt[n](hi) : hi}</span></div>
-    </div>`;
-  }).join("");
-}
-
-/* ---------- specs ---------- */
-const SPEC_ROWS = () => {
-  const s = DATA.specs;
-  const rows = [
-    ["peaking_boost", "HF peaking @ Nyquist", m => m.peaking_boost, v => v==null?"—":v.toFixed(2)+" dB", `${s.peaking_min_db}–${s.peaking_max_db} dB`],
-    ["power", "Power", m => m.power, v => v==null?"—":(v*1e3).toFixed(2)+" mW", `≤ ${(s.power_max_w*1e3).toFixed(0)} mW`],
-    ["eye_vertical_v", "Eye height (post-channel)", m => m.eye_vertical_v, v => v==null?"—":v.toFixed(3)+" V", `≥ ${s.eye_vertical_min_v} V`],
-    ["eye_horizontal_ui", "Eye width", m => m.eye_horizontal_ui, v => v==null?"—":v.toFixed(2)+" UI", `≥ ${s.eye_horizontal_min_ui} UI`],
-  ];
-  if (s.enforce_hd3) rows.push(["hd3", "HD3 linearity", m => m.hd3_db, v => v==null?"—":v.toFixed(1)+" dB", `≤ ${s.hd3_max_db} dB`]);
-  return rows;
-};
-
-function specs(step){
-  const html = SPEC_ROWS().map(([key, name, get, show, target]) => {
-    const v = get(step.metrics);
-    let viol = step.violations[key];
-    if (key === "peaking_boost") viol = Math.max(step.violations.peaking_boost ?? 0, step.violations.peaking_ceiling ?? 0);
-    const ok = viol != null && viol <= 0;
-    const pending = v == null;
-    return `<div class="spec">
-      <div><div class="nm">${name}</div><div class="tg">target ${target}</div></div>
-      <div style="text-align:right">
-        <div class="vl">${show(v)}</div>
-        <span class="badge ${ok ? "ok" : "bad"}">${pending ? "not run" : ok ? "PASS" : "FAIL"}</span>
-      </div></div>`;
-  }).join("");
-  $("specs").innerHTML = html;
-
-  const v = $("verdict");
-  v.classList.toggle("pass", step.all_specs_met);
-  $("rewardVal").textContent = step.reward.toFixed(2);
-  const firstOK = DATA.steps.findIndex(t => t.all_specs_met) + 1;
-  $("rewardSub").textContent = !step.all_specs_met
-    ? "reward for this design (negative = specs missed)"
-    : (step.step === firstOK
-        ? `all specifications met at simulation ${firstOK} — design accepted`
-        : `feasible since simulation ${firstOK} — now growing margin (trained to hold, not to stop)`);
-  v.classList.remove("flash"); void v.offsetWidth; v.classList.add("flash");
-
-  const nl = $("netlist"), body = $("nlbody");
-  nl.classList.toggle("pass", step.all_specs_met);
-  if (step.all_specs_met && DATA.netlist){
-    const NL = String.fromCharCode(10);
-    const keep = DATA.netlist.split(NL).filter(l => l.trim() && !l.startsWith("* Parameterized") && !l.startsWith("* Analysis"));
-    body.textContent = keep.slice(0, 16).join(NL);
-  } else {
-    body.textContent = "waiting for a feasible design…";
-  }
-}
-
-/* ---------- canvas helpers ---------- */
 function ctxFor(id){
-  const c = $(id), dpr = window.devicePixelRatio || 1;
-  const r = c.getBoundingClientRect();
-  c.width = Math.max(10, r.width * dpr); c.height = Math.max(10, r.height * dpr);
-  const x = c.getContext("2d"); x.scale(dpr, dpr);
-  x.clearRect(0, 0, r.width, r.height);
+  const c = $(id); if (!c) return null;
+  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) return null;
+  c.width = r.width*dpr; c.height = r.height*dpr;
+  const x = c.getContext("2d"); x.scale(dpr, dpr); x.clearRect(0,0,r.width,r.height);
   return [x, r.width, r.height];
 }
-function axes(x, w, h, pad, xl, yl){
-  x.strokeStyle = "#22324f"; x.lineWidth = 1;
-  x.strokeRect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b);
-  x.fillStyle = "#6d82a4"; x.font = "10px Segoe UI";
-  if (xl) x.fillText(xl, w / 2 - 20, h - 2);
-  if (yl){ x.save(); x.translate(9, h / 2 + 22); x.rotate(-Math.PI/2); x.fillText(yl, 0, 0); x.restore(); }
-}
+function frame(x,w,h,pad){ x.strokeStyle="#E3E9F2"; x.lineWidth=1; x.strokeRect(pad.l,pad.t,w-pad.l-pad.r,h-pad.t-pad.b); }
 
-/* ---------- eye ---------- */
+function renderKnobs(step, prev){
+  $("knobs").innerHTML = Object.keys(step.parameters).map(n => {
+    const [lo,hi] = DATA.bounds[n] || [-0.5,0.5], v = step.parameters[n];
+    const pct = Math.max(0, Math.min(100, (v-lo)/(hi-lo)*100));
+    let d = "";
+    if (prev){ const diff = v - prev.parameters[n];
+      if (Math.abs(diff) > Math.abs(v)*1e-4) d = `<span class="d">${diff>0?"↑":"↓"} ${FMT[n]?FMT[n](Math.abs(diff)):Math.abs(diff).toFixed(3)}</span>`; }
+    return `<div class="knob" style="margin-bottom:10px">
+      <div class="r"><span class="nm">${LABEL[n]||n}</span><span class="v">${FMT[n]?FMT[n](v):v.toFixed(3)}${d}</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
+  }).join("");
+}
+function specRows(){
+  const r = [
+    ["peaking_boost","HF peaking", m=>m.peaking_boost, v=>v==null?"—":v.toFixed(2)+" dB"],
+    ["power","Power", m=>m.power, v=>v==null?"—":(v*1e3).toFixed(2)+" mW"],
+    ["eye_vertical_v","Eye height", m=>m.eye_vertical_v, v=>v==null?"—":v.toFixed(3)+" V"],
+    ["eye_horizontal_ui","Eye width", m=>m.eye_horizontal_ui, v=>v==null?"—":v.toFixed(2)+" UI"],
+  ];
+  if (S.enforce_hd3) r.push(["hd3","HD3", m=>m.hd3_db, v=>v==null?"—":v.toFixed(1)+" dB"]);
+  return r;
+}
+function renderSpecs(step){
+  $("specs").innerHTML = specRows().map(([k,name,get,show]) => {
+    const v = get(step.metrics);
+    let viol = step.violations[k];
+    if (k === "peaking_boost") viol = Math.max(step.violations.peaking_boost ?? 0, step.violations.peaking_ceiling ?? 0);
+    const ok = viol != null && viol <= 0, pending = v == null;
+    return `<div class="specrow"><span>${name}</span><span><span class="sv">${show(v)}</span>
+      <span class="tag ${pending?"idle":ok?"ok":"bad"}">${pending?"not run":ok?"pass":"fail"}</span></span></div>`;
+  }).join("");
+  const vd = $("verdict");
+  vd.classList.toggle("pass", step.all_specs_met);
+  $("rewardVal").textContent = step.reward.toFixed(2);
+  $("rewardSub").textContent = !step.all_specs_met ? "reward — specifications still missed"
+    : step.step === firstOK ? `all specifications met at simulation ${firstOK}`
+    : `feasible since simulation ${firstOK} — now growing margin`;
+}
 function drawEye(step){
-  const [x, w, h] = ctxFor("eye");
-  const pad = {l: 42, r: 12, t: 12, b: 26};
-  const traces = step.eye || [];
-  const note = $("eyenote");
-  if (!traces.length){
-    axes(x, w, h, pad, "unit intervals", "differential output (V)");
-    x.fillStyle = "#fb7185"; x.font = "13px Segoe UI";
-    x.fillText("no transient — DC gate failed (fail-fast: nothing further simulated)", pad.l + 16, h / 2);
-    note.innerHTML = "";
-    return;
-  }
-  let lo = Infinity, hi = -Infinity;
-  for (const t of traces) for (const v of t){ if (v < lo) lo = v; if (v > hi) hi = v; }
-  const span = Math.max(hi - lo, 0.05), mid = (hi + lo) / 2;
-  lo = mid - span * 0.62; hi = mid + span * 0.62;
-  const X = u => pad.l + u / 2 * (w - pad.l - pad.r);
-  const Y = v => pad.t + (hi - v) / (hi - lo) * (h - pad.t - pad.b);
-
-  // target eye box
-  const eh = DATA.specs.eye_vertical_min_v, ew = DATA.specs.eye_horizontal_min_ui;
-  const cx = step.metrics.eye_center_ui != null ? step.metrics.eye_center_ui : 0.5;
-  x.fillStyle = "rgba(52,211,153,.10)"; x.strokeStyle = "rgba(52,211,153,.45)";
-  x.setLineDash([4, 3]);
-  const bx = X(cx + 0.5 - ew / 2), bw = X(cx + 0.5 + ew / 2) - bx;
-  const by = Y(mid + eh / 2), bh = Y(mid - eh / 2) - by;
-  x.fillRect(bx, by, bw, bh); x.strokeRect(bx, by, bw, bh);
-  x.setLineDash([]);
-  x.fillStyle = "rgba(52,211,153,.75)"; x.font = "10px Segoe UI";
-  x.fillText("required opening", bx + 4, by - 4);
-
-  axes(x, w, h, pad, "unit intervals", "differential output (V)");
-  x.strokeStyle = "rgba(56,189,248,.16)"; x.lineWidth = 1;
-  for (const t of traces){
-    x.beginPath();
-    t.forEach((v, i) => { const u = i / (t.length - 1) * 2; i ? x.lineTo(X(u), Y(v)) : x.moveTo(X(u), Y(v)); });
-    x.stroke();
-  }
-  x.fillStyle = "#6d82a4"; x.font = "10px Segoe UI";
-  for (const u of [0, 0.5, 1, 1.5, 2]) x.fillText(u.toFixed(1), X(u) - 7, h - 12);
-  for (let k = 0; k <= 4; k++){ const v = lo + (hi - lo) * k / 4; x.fillText(v.toFixed(2), 8, Y(v) + 3); }
-
-  const m = step.metrics, okH = m.eye_vertical_v >= eh, okW = m.eye_horizontal_ui >= ew;
-  note.innerHTML =
-    `<div><span class="k">eye height</span> <b style="color:${okH ? "var(--ok)" : "var(--bad)"}">${m.eye_vertical_v.toFixed(3)} V</b> <span class="k">/ ${eh} V</span></div>` +
-    `<div><span class="k">eye width</span> <b style="color:${okW ? "var(--ok)" : "var(--bad)"}">${m.eye_horizontal_ui.toFixed(2)} UI</b> <span class="k">/ ${ew} UI</span></div>` +
-    `<div class="k">PRBS7 · ${DATA.data_rate_gbps} Gbps · UI ${DATA.unit_interval_ps} ps</div>`;
+  const c = ctxFor("eye"); if (!c) return; const [x,w,h] = c;
+  const pad = {l:46,r:14,t:14,b:28}, traces = step.eye || [];
+  if (!traces.length){ frame(x,w,h,pad); x.fillStyle="#C2453B"; x.font="13px system-ui";
+    x.fillText("DC gate failed — nothing further simulated", pad.l+18, h/2);
+    $("eyenote").innerHTML = `<span>the operating point did not converge — the AC, transient and HD3 gates were skipped</span>`; return; }
+  let lo=Infinity, hi=-Infinity;
+  for (const t of traces) for (const v of t){ if(v<lo)lo=v; if(v>hi)hi=v; }
+  const span = Math.max(hi-lo,.05), mid=(hi+lo)/2; lo=mid-span*.62; hi=mid+span*.62;
+  const X = u => pad.l + u/2*(w-pad.l-pad.r), Y = v => pad.t + (hi-v)/(hi-lo)*(h-pad.t-pad.b);
+  const eh = S.eye_vertical_min_v, ew = S.eye_horizontal_min_ui;
+  const cx = step.metrics.eye_center_ui != null ? step.metrics.eye_center_ui : .5;
+  x.fillStyle="rgba(14,124,87,.08)"; x.strokeStyle="rgba(14,124,87,.45)"; x.setLineDash([4,3]);
+  const bx=X(cx+.5-ew/2), bw=X(cx+.5+ew/2)-bx, by=Y(mid+eh/2), bh=Y(mid-eh/2)-by;
+  x.fillRect(bx,by,bw,bh); x.strokeRect(bx,by,bw,bh); x.setLineDash([]);
+  x.fillStyle="rgba(14,124,87,.85)"; x.font="10.5px system-ui"; x.fillText("required opening", bx+5, by-5);
+  frame(x,w,h,pad);
+  x.strokeStyle="rgba(26,111,232,.16)"; x.lineWidth=1;
+  for (const t of traces){ x.beginPath();
+    t.forEach((v,i)=>{ const u=i/(t.length-1)*2; i?x.lineTo(X(u),Y(v)):x.moveTo(X(u),Y(v)); }); x.stroke(); }
+  x.fillStyle="#8494A8"; x.font="10.5px system-ui";
+  for (const u of [0,.5,1,1.5,2]) x.fillText(u.toFixed(1), X(u)-7, h-11);
+  for (let k=0;k<=4;k++){ const v=lo+(hi-lo)*k/4; x.fillText(v.toFixed(2), 8, Y(v)+3); }
+  x.fillText("unit intervals", w/2-30, h-1);
+  const m = step.metrics, okH = m.eye_vertical_v>=eh, okW = m.eye_horizontal_ui>=ew;
+  $("eyenote").innerHTML =
+    `<span>eye height <b style="color:${okH?"var(--ok)":"var(--bad)"}">${m.eye_vertical_v.toFixed(3)} V</b> / ${eh} V</span>`+
+    `<span>eye width <b style="color:${okW?"var(--ok)":"var(--bad)"}">${m.eye_horizontal_ui.toFixed(2)} UI</b> / ${ew} UI</span>`+
+    `<span style="margin-left:auto">2 UI after the channel</span>`;
 }
-
-/* ---------- AC ---------- */
 function drawAC(step){
-  const [x, w, h] = ctxFor("ac");
-  const pad = {l: 34, r: 10, t: 10, b: 20};
-  const ac = step.ac || {f: [], g: []};
-  if (!ac.f.length){ axes(x, w, h, pad); return; }
-  const f0 = Math.log10(ac.f[0]), f1 = Math.log10(ac.f[ac.f.length - 1]);
-  let lo = Math.min(...ac.g), hi = Math.max(...ac.g);
-  const pad2 = Math.max((hi - lo) * 0.2, 0.6); lo -= pad2; hi += pad2;
-  const X = f => pad.l + (Math.log10(f) - f0) / (f1 - f0) * (w - pad.l - pad.r);
-  const Y = g => pad.t + (hi - g) / (hi - lo) * (h - pad.t - pad.b);
-  axes(x, w, h, pad);
-  const nyq = DATA.nyquist_ghz * 1e9;
-  x.strokeStyle = "rgba(251,191,36,.7)"; x.setLineDash([4, 3]);
-  x.beginPath(); x.moveTo(X(nyq), pad.t); x.lineTo(X(nyq), h - pad.b); x.stroke(); x.setLineDash([]);
-  x.fillStyle = "rgba(251,191,36,.9)"; x.font = "9.5px Segoe UI"; x.fillText("Nyquist", X(nyq) + 3, pad.t + 10);
-  x.strokeStyle = "#38bdf8"; x.lineWidth = 1.8; x.beginPath();
-  ac.f.forEach((f, i) => i ? x.lineTo(X(f), Y(ac.g[i])) : x.moveTo(X(f), Y(ac.g[i])));
-  x.stroke();
-  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
-  x.fillText("10 MHz", pad.l, h - 6); x.fillText("10 GHz", w - pad.r - 34, h - 6);
-  const pk = step.metrics.peaking_boost;
-  if (pk != null){ x.fillStyle = "#e8eef8"; x.font = "11px Segoe UI";
-    x.fillText("peaking " + pk.toFixed(2) + " dB", pad.l + 6, pad.t + 12); }
+  const c = ctxFor("ac"); if (!c) return; const [x,w,h] = c;
+  const pad={l:34,r:12,t:12,b:20}, ac=step.ac||{f:[],g:[]};
+  if (!ac.f.length){ frame(x,w,h,pad); return; }
+  const f0=Math.log10(ac.f[0]), f1=Math.log10(ac.f[ac.f.length-1]);
+  let lo=Math.min(...ac.g), hi=Math.max(...ac.g); const m=Math.max((hi-lo)*.2,.6); lo-=m; hi+=m;
+  const X=f=>pad.l+(Math.log10(f)-f0)/(f1-f0)*(w-pad.l-pad.r), Y=g=>pad.t+(hi-g)/(hi-lo)*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  const nyq=DATA.nyquist_ghz*1e9;
+  x.strokeStyle="#C9D6E6"; x.setLineDash([4,3]); x.beginPath();
+  x.moveTo(X(nyq),pad.t); x.lineTo(X(nyq),h-pad.b); x.stroke(); x.setLineDash([]);
+  x.fillStyle="#8494A8"; x.font="9.5px system-ui"; x.fillText("Nyquist", X(nyq)+4, pad.t+10);
+  x.strokeStyle="#1A6FE8"; x.lineWidth=1.8; x.beginPath();
+  ac.f.forEach((f,i)=> i?x.lineTo(X(f),Y(ac.g[i])):x.moveTo(X(f),Y(ac.g[i]))); x.stroke();
+  const pk=step.metrics.peaking_boost;
+  if (pk!=null){ x.fillStyle="#0F1C2E"; x.font="11.5px system-ui"; x.fillText(pk.toFixed(2)+" dB peaking", pad.l+6, pad.t+11); }
 }
-
-/* ---------- reward trace vs the conventional searches ---------- */
-const BASE_COLOR = {"CMA-ES": "#fbbf24", "random search": "#94a3b8"};
-function drawTrace(upto){
-  const [x, w, h] = ctxFor("trace");
-  const pad = {l: 34, r: 10, t: 10, b: 20};
-  const steps = DATA.steps, n = steps.length;
-  const rs = steps.map(s => s.reward);
-  const bases = Object.entries(DATA.baselines || {});
-  const span = Math.max(n, ...bases.map(([, b]) => b.reward.length));
-  let lo = -3, hi = Math.max(...rs, 22);
-  for (const [, b] of bases) lo = Math.min(lo, Math.min(...b.reward));
-  lo = Math.max(lo, -12);
-  const X = i => pad.l + i / Math.max(1, span - 1) * (w - pad.l - pad.r);
-  const Y = r => pad.t + (hi - Math.max(lo, r)) / (hi - lo) * (h - pad.t - pad.b);
-  axes(x, w, h, pad);
-  x.strokeStyle = "#2a3d5e"; x.setLineDash([3, 3]); x.beginPath();
-  x.moveTo(pad.l, Y(0)); x.lineTo(w - pad.r, Y(0)); x.stroke(); x.setLineDash([]);
-
-  // baselines, drawn behind: the same reward on the same simulation axis
-  for (const [label, b] of bases){
-    x.strokeStyle = BASE_COLOR[label] || "#94a3b8"; x.globalAlpha = .55; x.lineWidth = 1.4;
-    x.beginPath();
-    b.reward.forEach((r, i) => i ? x.lineTo(X(i), Y(r)) : x.moveTo(X(i), Y(r)));
-    x.stroke();
-    if (b.first_feasible && b.first_feasible <= b.reward.length){
-      const i = b.first_feasible - 1;
-      x.globalAlpha = 1; x.fillStyle = BASE_COLOR[label] || "#94a3b8";
-      x.beginPath(); x.arc(X(i), Y(b.reward[i]), 3.5, 0, 7); x.fill();
-    }
-    x.globalAlpha = 1;
-  }
-
-  x.strokeStyle = "#38bdf8"; x.lineWidth = 2.4; x.beginPath();
-  for (let i = 0; i <= upto; i++) i ? x.lineTo(X(i), Y(rs[i])) : x.moveTo(X(i), Y(rs[i]));
-  x.stroke();
-  for (let i = 0; i <= upto; i++){
-    x.fillStyle = steps[i].all_specs_met ? "#34d399" : "#fb7185";
-    x.beginPath(); x.arc(X(i), Y(rs[i]), 4.2, 0, 7); x.fill();
-  }
-  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
-  const ticks = [0, Math.round(span / 2) - 1, span - 1];
-  ticks.forEach((i, k) => x.fillText("sim " + (i + 1), X(i) - (k === 0 ? 0 : k === ticks.length - 1 ? 34 : 14), h - 6));
-  x.fillText(hi.toFixed(0), 8, Y(hi) + 8); x.fillText(lo.toFixed(0), 8, Y(lo) - 2);
-
-  const firstOwn = steps.findIndex(s => s.all_specs_met) + 1;
-  const parts = [`<span style="color:#38bdf8">■</span> policy: feasible at sim ${firstOwn || "—"}`];
-  for (const [label, b] of bases)
-    parts.push(`<span style="color:${BASE_COLOR[label] || "#94a3b8"}">■</span> ${label}: sim ${b.first_feasible || "—"}`);
-  $("traceLegend").innerHTML = parts.join(" &nbsp;·&nbsp; ");
-}
-
-/* ---------- training curve / PVT ---------- */
 function drawTraining(){
-  const t = DATA.training;
-  if (!t || !t.step || !t.step.length){ $("lastPanel").style.display = "none"; return; }
-  const [x, w, h] = ctxFor("train");
-  const pad = {l: 34, r: 10, t: 10, b: 20};
-  const X = s => pad.l + s / t.step[t.step.length - 1] * (w - pad.l - pad.r);
-  const Y = p => pad.t + (100 - p) / 100 * (h - pad.t - pad.b);
-  axes(x, w, h, pad);
-  x.strokeStyle = "#34d399"; x.lineWidth = 2; x.beginPath();
-  t.step.forEach((s, i) => i ? x.lineTo(X(s), Y(t.feasible[i])) : x.moveTo(X(s), Y(t.feasible[i])));
-  x.stroke();
-  x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
-  x.fillText("0", pad.l, h - 6);
-  x.fillText(t.step[t.step.length - 1].toLocaleString() + " steps", w - pad.r - 70, h - 6);
-  x.fillText("100%", 6, Y(100) + 9); x.fillText("0%", 12, Y(0) - 2);
-  $("trainLegend").textContent =
-    "% of training steps meeting every spec — training ran once (" +
-    t.step[t.step.length - 1].toLocaleString() + " simulations); the rollout above reuses it.";
+  const c = ctxFor("train"); if (!c) return; const [x,w,h] = c;
+  const pad={l:34,r:12,t:12,b:20}, t=DATA.training||{};
+  if (!t.step || !t.step.length){ frame(x,w,h,pad); return; }
+  const s0=t.step[0], s1=t.step[t.step.length-1];
+  const X=v=>pad.l+(v-s0)/Math.max(1,s1-s0)*(w-pad.l-pad.r), Y=v=>pad.t+(100-v)/100*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  x.strokeStyle="#EDF1F7"; x.beginPath();
+  for (const g of [25,50,75]){ x.moveTo(pad.l,Y(g)); x.lineTo(w-pad.r,Y(g)); } x.stroke();
+  x.strokeStyle="#1A6FE8"; x.lineWidth=2; x.beginPath();
+  t.step.forEach((v,i)=> i?x.lineTo(X(v),Y(t.feasible[i])):x.moveTo(X(v),Y(t.feasible[i]))); x.stroke();
+  x.fillStyle="#8494A8"; x.font="10px system-ui";
+  x.fillText("100%",6,Y(100)+9); x.fillText("0",6,Y(0)-2);
+  x.fillText(s0+" steps",pad.l,h-7); x.fillText(s1+" steps",w-pad.r-52,h-7);
+  const end=t.feasible[t.feasible.length-1];
+  x.fillStyle="#0F1C2E"; x.font="11.5px system-ui";
+  x.fillText(end.toFixed(0)+"% of steps meet every spec", pad.l+8, Math.max(Y(end)-9, pad.t+24));
 }
-function drawPVT(){
-  if (!DATA.pvt) return false;
-  const panel = $("lastPanel");
-  panel.querySelector("h3").textContent = "PVT verification of this design (45 corners)";
-  const pass = DATA.pvt.filter(p => p.pass).length;
-  panel.querySelector(".body").innerHTML =
-    `<div class="pvtgrid">${DATA.pvt.map(p => `<div class="cell ${p.pass ? "ok" : "bad"}" title="${p.name}: ${p.peaking} dB"></div>`).join("")}</div>`;
-  $("trainLegend").textContent = `${pass}/${DATA.pvt.length} corners pass — 5 process × 3 supply × 3 temperature, peaking inside 3–12 dB at every corner.`;
-  return true;
+function drawRace(){
+  const c = ctxFor("race"); if (!c) return; const [x,w,h] = c;
+  const pad={l:36,r:14,t:14,b:24};
+  const rs = DATA.steps.map(s=>s.reward);
+  const bases = Object.entries(B);
+  const span = Math.max(DATA.steps.length, ...bases.map(([,b])=>b.reward.length));
+  let lo=-3, hi=Math.max(...rs,22);
+  for (const [,b] of bases) lo=Math.min(lo, Math.min(...b.reward));
+  lo=Math.max(lo,-12);
+  const X=i=>pad.l+i/Math.max(1,span-1)*(w-pad.l-pad.r), Y=r=>pad.t+(hi-Math.max(lo,r))/(hi-lo)*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  x.strokeStyle="#EDF1F7"; x.beginPath(); x.moveTo(pad.l,Y(0)); x.lineTo(w-pad.r,Y(0)); x.stroke();
+  const COL={"CMA-ES":"#E0A32E","random search":"#A9B7C9"};
+  for (const [label,b] of bases){
+    x.strokeStyle=COL[label]||"#A9B7C9"; x.lineWidth=1.3; x.globalAlpha=.75; x.beginPath();
+    b.reward.forEach((r,i)=> i?x.lineTo(X(i),Y(r)):x.moveTo(X(i),Y(r))); x.stroke(); x.globalAlpha=1;
+    if (b.first_feasible && b.first_feasible<=b.reward.length){ const i=b.first_feasible-1;
+      x.fillStyle=COL[label]||"#A9B7C9"; x.beginPath(); x.arc(X(i),Y(b.reward[i]),3.5,0,7); x.fill(); }
+  }
+  x.strokeStyle="#1A6FE8"; x.lineWidth=2.4; x.beginPath();
+  rs.forEach((r,i)=> i?x.lineTo(X(i),Y(r)):x.moveTo(X(i),Y(r))); x.stroke();
+  rs.forEach((r,i)=>{ x.fillStyle = DATA.steps[i].all_specs_met?"#0E7C57":"#C2453B";
+    x.beginPath(); x.arc(X(i),Y(r),4,0,7); x.fill(); });
+  x.fillStyle="#8494A8"; x.font="10px system-ui";
+  x.fillText("sim 1", pad.l, h-8); x.fillText("sim "+span, w-pad.r-34, h-8);
+  x.fillText(hi.toFixed(0), 8, Y(hi)+9); x.fillText(lo.toFixed(0), 8, Y(lo)-2);
+  const parts = [`<b style="color:#1A6FE8">━</b> policy · feasible at sim ${firstOK}`];
+  for (const [label,b] of bases) parts.push(`<b style="color:${COL[label]||"#A9B7C9"}">━</b> ${label} · sim ${b.first_feasible||"—"}`);
+  $("raceLegend").innerHTML = parts.join(" &nbsp;&nbsp; ");
+}
+function fillPVT(){
+  if (!DATA.pvt || !$("pvtGrid")) return;
+  $("pvtGrid").innerHTML = DATA.pvt.map(p=>`<i class="${p.pass?"ok":""}" title="${p.name}"></i>`).join("");
+  $("pvtNote").textContent = `${DATA.pvt.filter(p=>p.pass).length}/${DATA.pvt.length} corners pass — 5 process × 3 supply × 3 temperature, peaking inside ${S.peaking_min_db}–${S.peaking_max_db} dB everywhere.`;
+}
+function fillNetlist(){
+  if (!$("nlOut") || !DATA.netlist) return;
+  const keep = DATA.netlist.split(NL).filter(l => l.trim()).slice(0, 14)
+    .map(l => l.length > 56 ? l.slice(0, 55) + "…" : l);
+  $("nlOut").textContent = keep.join(NL);
 }
 
-/* ---------- driver ---------- */
-function render(i){
-  current = i;
-  const step = DATA.steps[i], prev = i > 0 ? DATA.steps[i - 1] : null;
-  $("stepper").textContent = `sim ${i + 1} / ${DATA.steps.length}`;
-  knobs(step, prev); specs(step); drawEye(step); drawAC(step); drawTrace(i);
-  if (step.all_specs_met) drawPVT(); else drawTraining();
+const VERB = {
+  W_in:["widened the input pair","narrowed the input pair"],
+  R_load:["raised the load resistance","lowered the load resistance"],
+  I_bias:["raised the tail current","cut the tail current"],
+  R_s:["increased degeneration","reduced degeneration"],
+  C_s:["moved the zero down in frequency","moved the zero up in frequency"],
+  dfe_tap:["strengthened the DFE tap","weakened the DFE tap"],
+};
+function moveCaption(step, prev){
+  if (!prev) return `<b>Simulation 1 · a random starting design.</b> This is where the policy is dropped, `
+    + `at a corner it is not told the name of.`;
+  const moves = Object.keys(step.parameters).map(n => {
+    const [lo,hi] = DATA.bounds[n] || [-0.5,0.5];
+    return {n, f:(step.parameters[n]-prev.parameters[n])/(hi-lo)};
+  }).filter(m => Math.abs(m.f) > 0.01).sort((a,b)=>Math.abs(b.f)-Math.abs(a.f)).slice(0,2);
+  const said = moves.map(m => VERB[m.n] ? VERB[m.n][m.f>0?0:1] : m.n).join(" and ");
+  const head = `<b>Simulation ${step.step}.</b> `;
+  if (!said) return head + "The policy is holding the design it has.";
+  if (step.all_specs_met && prev.all_specs_met)
+    return head + `Already feasible — it ${said} to widen the margin, which is what the bonus term pays for.`;
+  if (step.all_specs_met)
+    return head + `It ${said}. Every specification now passes.`;
+  return head + `It ${said}, following the violation gradient.`;
 }
-function next(){
-  if (current + 1 < DATA.steps.length){ render(current + 1); return true; }
-  return false;
-}
-function play(){
-  playing = true; $("play").textContent = "❚❚ Pause";
-  const tick = () => {
-    if (!playing) return;
-    if (!next()){ playing = false; $("play").textContent = "▶ Play"; return; }
-    timer = setTimeout(tick, 2600 / speed);
-  };
-  timer = setTimeout(tick, 1400 / speed);
-}
-function pause(){ playing = false; clearTimeout(timer); $("play").textContent = "▶ Play"; }
 
-$("play").onclick = () => playing ? pause() : (current + 1 >= DATA.steps.length ? (render(0), play()) : play());
-$("next").onclick = () => { pause(); next(); };
-$("prev").onclick = () => { pause(); if (current > 0) render(current - 1); };
-$("restart").onclick = () => { pause(); render(0); };
-$("speed").onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; $("speed").textContent = speed + "×"; };
-window.addEventListener("resize", () => render(current));
-document.addEventListener("keydown", e => {
-  if (e.code === "Space"){ e.preventDefault(); $("play").click(); }
-  if (e.code === "ArrowRight") $("next").click();
-  if (e.code === "ArrowLeft") $("prev").click();
+/* ---------------- navigation ---------------- */
+let idx = 0, sim = 0, seen = new Set([0]);
+const main = $("main"), liveIndex = SECTIONS.findIndex(s => s.live);
+
+SECTIONS.forEach((s, i) => {
+  const el = document.createElement("section");
+  el.id = "sec-" + s.id; el.innerHTML = s.html; main.appendChild(el);
 });
+$("dots").innerHTML = SECTIONS.map((s,i)=>`<i class="dot" data-i="${i}"></i>`).join("");
+$("dots").onclick = e => { const i = e.target.dataset.i; if (i != null) go(+i); };
 
-/* #step=2 opens on a given simulation, #auto=0 disables the autoplay (handy for screenshots). */
+function paint(){
+  document.querySelectorAll("section").forEach((el,i)=> el.classList.toggle("on", i===idx));
+  document.querySelectorAll(".dot").forEach((d,i)=>{ d.classList.toggle("on", i===idx); d.classList.toggle("seen", seen.has(i) && i!==idx); });
+  $("bar").style.width = ((idx+1)/SECTIONS.length*100) + "%";
+  $("count").textContent = String(idx+1).padStart(2,"0") + " / " + SECTIONS.length;
+  $("back").disabled = idx === 0 && sim === 0;
+  const s = SECTIONS[idx];
+  if (s.live){
+    renderLive();
+    $("fwd").textContent = sim + 1 < DATA.steps.length ? "Run next simulation" : "Next";
+  } else {
+    $("fwd").textContent = idx === SECTIONS.length - 1 ? "Restart" : "Next";
+  }
+  if (s.id === "agent") drawTraining();
+  if (s.id === "baselines") drawRace();
+  if (s.id === "pvt") fillPVT();
+  if (s.id === "deliverables") fillNetlist();
+}
+function renderLive(){
+  const step = DATA.steps[sim], prev = sim ? DATA.steps[sim-1] : null;
+  $("cornerName").textContent = DATA.corner;
+  renderKnobs(step, prev); renderSpecs(step); drawEye(step); drawAC(step);
+  $("miniTitle").textContent = "AC response · simulation " + (sim+1) + " of " + DATA.steps.length;
+  $("movecap").innerHTML = moveCaption(step, prev);
+}
+function go(i, atEnd){
+  const from = idx;
+  idx = Math.max(0, Math.min(SECTIONS.length-1, i));
+  seen.add(idx);
+  if (idx !== from) sim = SECTIONS[idx].live ? (atEnd ? DATA.steps.length - 1 : 0) : 0;
+  paint();
+}
+function fwd(){
+  const s = SECTIONS[idx];
+  if (s.live && sim + 1 < DATA.steps.length){ sim++; paint(); return; }
+  if (idx === SECTIONS.length - 1){ seen = new Set([0]); go(0); return; }
+  go(idx + 1);
+}
+function back(){
+  const s = SECTIONS[idx];
+  if (s.live && sim > 0){ sim--; paint(); return; }
+  if (idx > 0) go(idx - 1, true);
+}
+$("fwd").onclick = fwd; $("back").onclick = back;
+document.addEventListener("keydown", e => {
+  if (e.code === "ArrowRight" || e.code === "Space" || e.code === "Enter"){ e.preventDefault(); fwd(); }
+  if (e.code === "ArrowLeft"){ e.preventDefault(); back(); }
+  if (e.code === "Home"){ go(0); }
+  if (e.code === "End"){ go(SECTIONS.length - 1); }
+});
+window.addEventListener("resize", () => paint());
+
+// #s=8 opens on section 8; &sim=3 opens the live section on simulation 3.
 const HASH = new URLSearchParams(location.hash.slice(1));
-const START = Math.max(0, Math.min(DATA.steps.length - 1, (parseInt(HASH.get("step"), 10) || 1) - 1));
-const AUTO = HASH.get("auto") !== "0";
-
-chips(); render(START); if (START === 0) drawTraining();
-if (AUTO) setTimeout(() => { if (!playing && current === START) play(); }, 1200);
+if (HASH.has("s")){
+  const byId = SECTIONS.findIndex(x => x.id === HASH.get("s"));
+  idx = Math.max(0, Math.min(SECTIONS.length-1, byId >= 0 ? byId : (parseInt(HASH.get("s"),10)||1)-1));
+  seen = new Set(Array.from({length: idx+1}, (_,k)=>k));
+}
+if (HASH.has("sim")) sim = Math.max(0, Math.min(DATA.steps.length-1, (parseInt(HASH.get("sim"),10)||1)-1));
+paint();
 </script>
 </body>
 </html>
