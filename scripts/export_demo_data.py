@@ -89,6 +89,9 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=10)
     parser.add_argument("--corners", choices=("nominal", "all", "process"), default=None)
     parser.add_argument("--pvt", action="store_true", help="also run the 45-corner sweep on the final design")
+    parser.add_argument("--hold", action="store_true", help="keep simulating after the specs pass (as in training) to show margin growth")
+    parser.add_argument("--baselines", nargs="*", default=[], metavar="NAME=DIR",
+                        help="baseline runs to draw on the simulation axis, e.g. random=reports/baseline-ihp-3000")
     parser.add_argument("--training-from", default=None, help="run directory whose steps.csv supplies the training curve (default: the rollout run)")
     parser.add_argument("--output", default="docs/demo/rollout.json")
     args = parser.parse_args()
@@ -110,7 +113,7 @@ def main() -> None:
         delta_scale=config["delta_scale"],
         run_transient=config["run_transient"],
         random_reset=True,
-        terminate_on_success=True,
+        terminate_on_success=not args.hold,
         run_linearity=bool(config.get("hd3")),
         corners=curriculum_corners(args.corners or config.get("corners", "nominal")),
     )
@@ -148,8 +151,26 @@ def main() -> None:
         if terminated or truncated:
             break
 
+    baselines = {}
+    for item in args.baselines:
+        label, _, path = item.partition("=")
+        rows = list(csv.DictReader((ROOT / path / "steps.csv").open(encoding="utf-8")))
+        rewards = [float(r["reward"]) for r in rows]
+        feasible = [r["all_specs_met"] == "True" for r in rows]
+        first = next((i + 1 for i, ok in enumerate(feasible) if ok), None)
+        keep = min(len(rewards), 40)
+        baselines[label] = {
+            "reward": [round(v, 3) for v in rewards[:keep]],
+            "feasible": [bool(v) for v in feasible[:keep]],
+            "first_feasible": first,
+            "total": len(rewards),
+            "feasible_fraction": round(sum(feasible) / len(feasible) * 100, 1),
+        }
+        print(f"baseline {label}: first feasible at #{first} of {len(rewards)}", flush=True)
+
     payload = {
         "run": run_dir.name,
+        "baselines": baselines,
         "checkpoint": checkpoint.name,
         "model_source": evaluator.model_source,
         "corner": corner,
