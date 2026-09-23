@@ -13,7 +13,7 @@ Double-click it — no server, no internet, no Python needed.
 | Target specification | each spec with its measured value, target and PASS/FAIL; HD3 shows "not run" while fail-fast skips it |
 | Verdict + netlist | the reward, and the sized `sized_ctle.sp` once the design passes |
 | AC response | CTLE gain with the Nyquist marker and the measured peaking |
-| Reward per simulation | the rollout so far; green dot = every spec met |
+| Reward vs simulations | the policy against CMA-ES and random search on one simulation axis; green dot = every spec met, and each method's first feasible design is marked |
 | Bottom-right | the training curve before the design passes, the 45-corner PVT grid after it |
 
 ## Controls
@@ -44,6 +44,5 @@ python scripts/export_demo_data.py reports/sac-ihp-pvt --seed 21 --pvt \
 python scripts/build_demo.py --output docs/demo/autoanalog_demo.html
 ```
 
-`--seed` picks the random starting design and PVT corner; a seed whose first step fails on
-more specs makes a better demo. `template.html` is the editable source; `build_demo.py`
+`template.html` is the editable source; `build_demo.py`
 inlines `rollout.json` into it so the result is one portable file.

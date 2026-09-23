@@ -165,7 +165,8 @@
 
   <footer>
     <div class="mini"><h3>AC response (CTLE alone)</h3><div class="body"><canvas id="ac"></canvas></div></div>
-    <div class="mini"><h3>Reward per simulation</h3><div class="body"><canvas id="trace"></canvas></div></div>
+    <div class="mini"><h3>Reward vs simulations — policy against conventional search</h3><div class="body"><canvas id="trace"></canvas></div>
+      <div class="legend" id="traceLegend"></div></div>
     <div class="mini" id="lastPanel"><h3>What the policy learned from</h3><div class="body"><canvas id="train"></canvas></div>
       <div class="legend" id="trainLegend"></div></div>
   </footer>
@@ -259,9 +260,12 @@ function specs(step){
   const v = $("verdict");
   v.classList.toggle("pass", step.all_specs_met);
   $("rewardVal").textContent = step.reward.toFixed(2);
-  $("rewardSub").textContent = step.all_specs_met
-    ? "all specifications met — design accepted"
-    : "reward for this design (negative = specs missed)";
+  const firstOK = DATA.steps.findIndex(t => t.all_specs_met) + 1;
+  $("rewardSub").textContent = !step.all_specs_met
+    ? "reward for this design (negative = specs missed)"
+    : (step.step === firstOK
+        ? `all specifications met at simulation ${firstOK} — design accepted`
+        : `feasible since simulation ${firstOK} — now growing margin (trained to hold, not to stop)`);
   v.classList.remove("flash"); void v.offsetWidth; v.classList.add("flash");
 
   const nl = $("netlist"), body = $("nlbody");
@@ -368,28 +372,55 @@ function drawAC(step){
     x.fillText("peaking " + pk.toFixed(2) + " dB", pad.l + 6, pad.t + 12); }
 }
 
-/* ---------- reward trace ---------- */
+/* ---------- reward trace vs the conventional searches ---------- */
+const BASE_COLOR = {"CMA-ES": "#fbbf24", "random search": "#94a3b8"};
 function drawTrace(upto){
   const [x, w, h] = ctxFor("trace");
   const pad = {l: 34, r: 10, t: 10, b: 20};
   const steps = DATA.steps, n = steps.length;
   const rs = steps.map(s => s.reward);
-  let lo = Math.min(-2, ...rs), hi = Math.max(...rs, 2);
-  const X = i => pad.l + (n === 1 ? 0.5 : i / (n - 1)) * (w - pad.l - pad.r);
-  const Y = r => pad.t + (hi - r) / (hi - lo) * (h - pad.t - pad.b);
+  const bases = Object.entries(DATA.baselines || {});
+  const span = Math.max(n, ...bases.map(([, b]) => b.reward.length));
+  let lo = -3, hi = Math.max(...rs, 22);
+  for (const [, b] of bases) lo = Math.min(lo, Math.min(...b.reward));
+  lo = Math.max(lo, -12);
+  const X = i => pad.l + i / Math.max(1, span - 1) * (w - pad.l - pad.r);
+  const Y = r => pad.t + (hi - Math.max(lo, r)) / (hi - lo) * (h - pad.t - pad.b);
   axes(x, w, h, pad);
   x.strokeStyle = "#2a3d5e"; x.setLineDash([3, 3]); x.beginPath();
   x.moveTo(pad.l, Y(0)); x.lineTo(w - pad.r, Y(0)); x.stroke(); x.setLineDash([]);
-  x.strokeStyle = "#38bdf8"; x.lineWidth = 2; x.beginPath();
+
+  // baselines, drawn behind: the same reward on the same simulation axis
+  for (const [label, b] of bases){
+    x.strokeStyle = BASE_COLOR[label] || "#94a3b8"; x.globalAlpha = .55; x.lineWidth = 1.4;
+    x.beginPath();
+    b.reward.forEach((r, i) => i ? x.lineTo(X(i), Y(r)) : x.moveTo(X(i), Y(r)));
+    x.stroke();
+    if (b.first_feasible && b.first_feasible <= b.reward.length){
+      const i = b.first_feasible - 1;
+      x.globalAlpha = 1; x.fillStyle = BASE_COLOR[label] || "#94a3b8";
+      x.beginPath(); x.arc(X(i), Y(b.reward[i]), 3.5, 0, 7); x.fill();
+    }
+    x.globalAlpha = 1;
+  }
+
+  x.strokeStyle = "#38bdf8"; x.lineWidth = 2.4; x.beginPath();
   for (let i = 0; i <= upto; i++) i ? x.lineTo(X(i), Y(rs[i])) : x.moveTo(X(i), Y(rs[i]));
   x.stroke();
   for (let i = 0; i <= upto; i++){
     x.fillStyle = steps[i].all_specs_met ? "#34d399" : "#fb7185";
-    x.beginPath(); x.arc(X(i), Y(rs[i]), 4, 0, 7); x.fill();
+    x.beginPath(); x.arc(X(i), Y(rs[i]), 4.2, 0, 7); x.fill();
   }
   x.fillStyle = "#6d82a4"; x.font = "9.5px Segoe UI";
-  for (let i = 0; i < n; i++) x.fillText("sim " + (i + 1), X(i) - 12, h - 6);
+  const ticks = [0, Math.round(span / 2) - 1, span - 1];
+  ticks.forEach((i, k) => x.fillText("sim " + (i + 1), X(i) - (k === 0 ? 0 : k === ticks.length - 1 ? 34 : 14), h - 6));
   x.fillText(hi.toFixed(0), 8, Y(hi) + 8); x.fillText(lo.toFixed(0), 8, Y(lo) - 2);
+
+  const firstOwn = steps.findIndex(s => s.all_specs_met) + 1;
+  const parts = [`<span style="color:#38bdf8">■</span> policy: feasible at sim ${firstOwn || "—"}`];
+  for (const [label, b] of bases)
+    parts.push(`<span style="color:${BASE_COLOR[label] || "#94a3b8"}">■</span> ${label}: sim ${b.first_feasible || "—"}`);
+  $("traceLegend").innerHTML = parts.join(" &nbsp;·&nbsp; ");
 }
 
 /* ---------- training curve / PVT ---------- */
