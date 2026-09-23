@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoAnalog-RL</title>
+<style>
+  :root{
+    --bg:#191714; --bg2:#201D19; --plate:#262320; --plate2:#2E2A25;
+    --ink:#F4EFE6; --muted:#B3A896; --faint:#867C6E;
+    --hair:#332F29; --edge:#3D382F;
+    --clay:#D97757; --clay2:#E8A183; --sand:#C9B89A;
+    --ok:#7FB08A; --okbg:rgba(127,176,138,.14);
+    --bad:#CE6A56; --badbg:rgba(206,106,86,.14);
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+    --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    --mono:"SF Mono",Consolas,"Roboto Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  #bar{position:fixed;top:0;left:0;height:2px;background:var(--clay);width:0;z-index:50;transition:width .45s ease}
+  #brand{position:fixed;top:22px;left:38px;z-index:40;font-size:13px}
+  #brand b{font-weight:600} #brand span{color:var(--faint)}
+  #count{position:fixed;top:22px;right:38px;z-index:40;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+  main{height:100%}
+  section{position:absolute;inset:0;display:none;padding:74px 38px 90px;overflow:hidden}
+  section.on{display:flex;flex-direction:column}
+  .wrap{width:100%;max-width:1200px;margin:0 auto;flex:1;min-height:0;display:flex;flex-direction:column}
+  .wrap.center{justify-content:center}
+  .eyebrow{font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:14px}
+  h1{font-family:var(--serif);font-weight:400;font-size:62px;line-height:1.06;margin:0 0 18px;letter-spacing:-.015em}
+  h2{font-family:var(--serif);font-weight:400;font-size:39px;line-height:1.15;margin:0 0 14px;letter-spacing:-.01em}
+  .lead{font-size:17.5px;line-height:1.55;color:var(--muted);max-width:760px;margin:0 0 28px}
+  .lead b{color:var(--ink);font-weight:600}
+  p{margin:0 0 12px;line-height:1.6}
+  .fine{font-size:12.5px;color:var(--faint);line-height:1.55}
+  em{color:var(--sand);font-style:italic}
+  .on .wrap > *{animation:rise .55s cubic-bezier(.2,.7,.3,1) both}
+  .on .wrap > *:nth-child(2){animation-delay:.05s}
+  .on .wrap > *:nth-child(3){animation-delay:.1s}
+  .on .wrap > *:nth-child(4){animation-delay:.15s}
+  .on .wrap > *:nth-child(5){animation-delay:.2s}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--bg2);border:1px solid var(--hair);border-radius:14px;padding:20px 22px}
+  .card h3{margin:0 0 8px;font-size:15.5px;font-weight:600}
+  .card p{font-size:13.5px;color:var(--muted);margin:0}
+  .num{font-family:var(--serif);font-size:40px;line-height:1;margin-bottom:6px}
+  .num.clay{color:var(--clay)} .num.ok{color:var(--ok)}
+  .cap{font-size:12.5px;color:var(--muted);line-height:1.5}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair)}
+  th{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600}
+  .tag.ok{background:var(--okbg);color:var(--ok)}
+  .tag.bad{background:var(--badbg);color:var(--bad)}
+  .tag.idle{background:#2A2622;color:var(--faint)}
+  code,pre{font-family:var(--mono);font-size:12.5px}
+  pre{background:#13110F;color:#D8CFC0;border:1px solid var(--hair);border-radius:12px;
+    padding:16px 18px;margin:0;overflow:hidden;line-height:1.55}
+  pre .c{color:var(--faint)} pre .k{color:var(--clay2)}
+  .kbd{font-family:var(--mono);font-size:11.5px;background:#2A2622;border:1px solid var(--edge);border-radius:5px;padding:1px 6px}
+  .rule{height:1px;background:var(--hair);margin:22px 0}
+  .quote{font-family:var(--serif);font-size:22px;line-height:1.45;max-width:880px;color:var(--sand)}
+  nav{position:fixed;left:0;right:0;bottom:0;height:76px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 38px;background:linear-gradient(to top,var(--bg) 62%,transparent);z-index:40}
+  .dots{display:flex;gap:6px;align-items:center}
+  .dot{width:6px;height:6px;border-radius:50%;background:#3A352E;cursor:pointer;transition:.25s}
+  .dot.on{background:var(--clay);transform:scale(1.5)}
+  .dot.seen{background:#6B6155}
+  .navbtns{display:flex;gap:10px;align-items:center}
+  button{font-family:inherit;font-size:14px;border-radius:10px;cursor:pointer;border:1px solid var(--edge);
+    background:transparent;color:var(--ink);padding:11px 20px;transition:.18s}
+  button:hover{border-color:var(--clay);color:var(--clay2)}
+  button.primary{background:var(--clay);color:#1B1512;border-color:var(--clay);font-weight:600}
+  button.primary:hover{background:var(--clay2);border-color:var(--clay2);color:#1B1512}
+  button:disabled{opacity:.3;cursor:default}
+  button:disabled:hover{border-color:var(--edge);color:var(--ink)}
+  .hint{font-size:11.5px;color:var(--faint);margin-right:6px}
+
+  /* ---- exploded architecture ---- */
+  .arch{display:grid;grid-template-columns:1fr 210px 340px;grid-template-rows:minmax(0,1fr);
+    align-items:center;gap:26px;flex:1;min-height:0}
+  .stage{position:relative;height:100%;min-height:0;
+    perspective:1700px;perspective-origin:50% 46%}
+  .stack{position:absolute;left:47%;top:50%;transform-style:preserve-3d;
+    transform:translate(-50%,-50%) rotateX(61deg) rotateZ(-40deg)}
+  .plate{position:absolute;left:-185px;top:-120px;width:370px;height:240px;border-radius:12px;
+    border:1px solid #4A443A;background:linear-gradient(145deg,#38332C,#2A2622);
+    transform-style:preserve-3d;opacity:.22;
+    transition:transform .85s cubic-bezier(.2,.75,.25,1),opacity .6s ease,border-color .5s,box-shadow .5s;
+    box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  .plate.shown{opacity:1}
+  .plate.live{background:linear-gradient(145deg,#463D33,#332C25)}
+  .plate.live{border-color:var(--clay);box-shadow:0 0 0 1px var(--clay),0 22px 60px rgba(217,119,87,.22)}
+  .plate .idx{position:absolute;left:22px;top:14px;font-family:var(--serif);font-size:42px;
+    color:rgba(244,239,230,.13);line-height:1}
+  .plate .etch{position:absolute;inset:66px 22px 22px 22px;border-top:1px solid rgba(244,239,230,.07);
+    display:flex;flex-wrap:wrap;align-content:flex-start;gap:7px;padding-top:16px}
+  .plate .etch b{font-family:var(--mono);font-size:10.5px;font-weight:400;color:rgba(244,239,230,.42);
+    border:1px solid rgba(244,239,230,.11);border-radius:5px;padding:3px 8px}
+  .plate.live .etch b{color:rgba(232,161,131,.85);border-color:rgba(217,119,87,.35)}
+  .tags{align-self:center}
+  .tags b{display:block;padding:7px 10px;margin-bottom:3px;border-radius:8px;white-space:nowrap;
+    border:1px solid transparent;font-size:12.5px;font-weight:400;line-height:1.3;
+    color:var(--faint);cursor:pointer;
+    transition:color .3s,background-color .3s,border-color .3s}
+  .tags b i{font-style:normal;font-family:var(--mono);font-size:10.5px;opacity:.5;margin-right:10px}
+  .tags b.shown{color:var(--muted)}
+  .tags b.shown i{color:var(--clay);opacity:.8}
+  .tags b.live{color:var(--ink);border-color:var(--edge);background:var(--bg2);font-weight:600}
+  .tags b.live i{color:var(--clay);opacity:1}
+  .panel{display:flex;flex-direction:column;justify-content:center;gap:14px;min-height:0}
+  .panel .who{font-family:var(--serif);font-size:27px;line-height:1.2}
+  .panel .role{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--clay)}
+  .panel .says{font-size:14px;line-height:1.6;color:var(--muted)}
+  .panel .file{font-family:var(--mono);font-size:11.5px;color:var(--faint);
+    border-top:1px solid var(--hair);padding-top:12px}
+
+  /* ---- one step through the stack ---- */
+  .trace{display:grid;grid-template-columns:300px 1fr;grid-template-rows:minmax(0,1fr);
+    align-items:center;gap:30px;flex:1;min-height:0}
+  .rail{align-self:center}
+  .rung{display:block;padding:9px 12px;margin-bottom:3px;border-radius:9px;
+    border:1px solid transparent;font-size:13px;line-height:1.3;white-space:nowrap;
+    color:var(--faint)}
+  .rung i{display:inline-block;vertical-align:middle;width:7px;height:7px;
+    border-radius:50%;background:#3A352E;margin-right:11px}
+  .rung.done{color:var(--muted)} .rung.done i{background:var(--edge)}
+  .rung.live{color:var(--ink);font-weight:600;border-color:var(--edge);background:var(--bg2)}
+  .rung.live i{background:var(--clay);box-shadow:0 0 0 4px rgba(217,119,87,.16)}
+  .rung .dir{font-family:var(--mono);font-size:11px;color:var(--clay2);margin-left:8px}
+  .stagebox{display:flex;flex-direction:column;gap:14px;min-height:0;justify-content:center}
+  .stagebox .hd{font-family:var(--serif);font-size:28px;line-height:1.2}
+  .stagebox .sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:700px}
+  .vec{display:flex;flex-wrap:wrap;gap:7px}
+  .vec span{font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:7px;
+    background:var(--bg2);border:1px solid var(--hair);color:var(--sand);font-variant-numeric:tabular-nums}
+  .vec span i{color:var(--faint);font-style:normal;margin-right:7px}
+  .vec span.hot{border-color:var(--clay);color:var(--clay2)}
+  .gates{display:flex;gap:10px;flex-wrap:wrap}
+  .gate{flex:1;min-width:160px;background:var(--bg2);border:1px solid var(--hair);border-radius:11px;padding:12px 14px}
+  .gate .g1{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .gate .g2v{font-size:17px;margin-top:5px;font-variant-numeric:tabular-nums}
+
+  /* ---- live rollout ---- */
+  .rollout{display:grid;grid-template-columns:290px 1fr 300px;gap:20px;flex:1;min-height:0}
+  .rollcol{display:flex;flex-direction:column;min-height:0;gap:12px}
+  .knob{font-size:12.5px}
+  .knob .r{display:flex;justify-content:space-between;align-items:baseline}
+  .knob .nm{color:var(--muted)}
+  .knob .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .knob .d{font-size:11px;margin-left:6px;color:var(--clay)}
+  .track{height:4px;background:#2A2622;border-radius:3px;margin-top:5px;position:relative;overflow:hidden}
+  .fill{position:absolute;inset:0 auto 0 0;background:var(--clay);border-radius:3px;
+    transition:width .55s cubic-bezier(.3,.8,.3,1)}
+  .specrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+    border-bottom:1px solid var(--hair);font-size:13px}
+  .specrow:last-child{border-bottom:none}
+  .specrow .sv{font-variant-numeric:tabular-nums;font-weight:600;margin-right:8px}
+  .eyebox{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;background:var(--bg2);
+    border:1px solid var(--hair);border-radius:14px;padding:14px 16px 10px}
+  .eyehead{display:flex;gap:22px;font-size:12.5px;color:var(--faint);flex:0 0 auto}
+  .eyehead b{font-variant-numeric:tabular-nums}
+  .fillbox{flex:1;min-height:0;position:relative}
+  canvas{width:100%;height:100%;display:block}
+  .chartbox{background:var(--bg2);border:1px solid var(--hair);border-radius:14px;padding:14px 16px;
+    display:flex;flex-direction:column;min-height:0}
+  .chartbox h3{margin:0 0 2px;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .chartbox .body{flex:1;min-height:0}
+  .verdict{border:1px solid var(--hair);border-radius:12px;padding:14px 16px;background:var(--bg2);transition:.35s}
+  .verdict.pass{border-color:rgba(127,176,138,.45);background:var(--okbg)}
+  .verdict .big{font-family:var(--serif);font-size:32px;line-height:1}
+  .verdict.pass .big{color:var(--ok)}
+  .pvt{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(3,1fr);gap:4px;height:100%}
+  .pvt i{border-radius:3px;background:#2A2622}
+  .pvt i.ok{background:var(--ok);opacity:.8}
+  .flow{display:flex;align-items:stretch}
+  .step{flex:1;background:var(--bg2);border:1px solid var(--hair);border-radius:12px;padding:14px 16px}
+  .step .n{font-family:var(--serif);font-size:22px;color:var(--clay);line-height:1}
+  .step h4{margin:6px 0 4px;font-size:14px;font-weight:600}
+  .step p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
+  .arrow{align-self:center;color:var(--edge);padding:0 10px;font-size:18px}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="brand"><b>AutoAnalog-RL</b> <span>&middot; Nebula &middot; AI/ML for Analog Circuit Design</span></div>
+<div id="count"></div>
+<main id="main"></main>
+<nav>
+  <div class="dots" id="dots"></div>
+  <div class="navbtns">
+    <span class="hint">press <span class="kbd">&rarr;</span></span>
+    <button id="back">Back</button>
+    <button class="primary" id="fwd">Next</button>
+  </div>
+</nav>
+
+<script>
+const DATA = /*__DATA__*/ null;
+const $ = id => document.getElementById(id);
+const NL = String.fromCharCode(10);
+const S = DATA.specs;
+const B = DATA.baselines || {};
+const firstOK = DATA.steps.findIndex(s => s.all_specs_met) + 1;
+const KEY = DATA.steps[Math.max(0, firstOK - 1)];
+const PREV = firstOK > 1 ? DATA.steps[firstOK - 2] : null;
+const DSCALE = 0.2;
+const PNAMES = ["W_in","R_load","I_bias","R_s","C_s"];
+const FMT = {
+  W_in: v => (v*1e6).toFixed(2)+" µm", R_load: v => v.toFixed(0)+" Ω",
+  I_bias: v => (v*1e3).toFixed(3)+" mA", R_s: v => v.toFixed(0)+" Ω",
+  C_s: v => (v*1e15).toFixed(0)+" fF", dfe_tap: v => v.toFixed(3),
+};
+const LABEL = {W_in:"W_in", R_load:"R_load", I_bias:"I_bias", R_s:"R_s", C_s:"C_s", dfe_tap:"DFE tap"};
+
+function schematicSVG(){
+  return `<svg viewBox="0 0 300 172" style="width:100%">
+    <g stroke="#8C8272" stroke-width="1.25" fill="none" stroke-linecap="round">
+      <line x1="20" y1="16" x2="280" y2="16"/>
+      <path d="M70 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+      <path d="M230 16 v10 l-5 3 l10 4 l-10 4 l10 4 l-10 4 l5 3 v10"/>
+      <line x1="70" y1="64" x2="70" y2="78"/><line x1="230" y1="64" x2="230" y2="78"/>
+      <path d="M58 78 v22 M62 80 v18 M62 82 h8 M62 96 h8 M70 78 v4 M70 96 v4"/>
+      <path d="M242 78 v22 M238 80 v18 M238 82 h-8 M238 96 h-8 M230 78 v4 M230 96 v4"/>
+      <line x1="40" y1="89" x2="58" y2="89"/><line x1="260" y1="89" x2="242" y2="89"/>
+      <line x1="70" y1="100" x2="70" y2="114"/><line x1="230" y1="100" x2="230" y2="114"/>
+      <path d="M70 114 h12 l3-5 l6 10 l6-10 l6 10 l3-5 h44"/>
+      <path d="M230 114 h-12 l-3-5 l-6 10 l-6-10 l-6 10 l-3-5 h-44"/>
+      <path d="M70 114 v-8 h60 M170 106 h60 v8"/>
+      <line x1="140" y1="98" x2="140" y2="114"/><line x1="160" y1="98" x2="160" y2="114"/>
+      <path d="M130 106 h10 M160 106 h10"/>
+      <line x1="150" y1="114" x2="150" y2="124"/>
+      <circle cx="150" cy="134" r="10"/><path d="M150 128 v9 M146 134 l4 5 l4-5"/>
+      <line x1="150" y1="144" x2="150" y2="154"/><path d="M142 154 h16 M145 158 h10 M148 162 h4"/>
+    </g>
+    <g fill="#B3A896" font-size="8.5" font-family="Georgia,serif">
+      <text x="22" y="12">VDD 1.2 V</text>
+      <text x="34" y="46">R_load</text><text x="240" y="46">R_load</text>
+      <text x="44" y="62" fill="#D97757">outP</text><text x="236" y="62" fill="#D97757">outN</text>
+      <text x="22" y="92">inP</text><text x="264" y="92">inN</text>
+      <text x="76" y="88" font-size="7.5">M1</text><text x="212" y="88" font-size="7.5">M2</text>
+      <text x="92" y="130">R_s</text><text x="196" y="130">R_s</text>
+      <text x="134" y="94">C_s</text><text x="164" y="138">I_bias</text>
+    </g>
+  </svg>`;
+}
+
+/* ---------------- the seven layers ---------------- */
+const LAYERS = [
+  { role:"layer 01 · what we want", who:"Specification",
+    etch:["eye &ge; 0.25 V","0.7 UI","peaking 3&ndash;12 dB","power &le; 5 mW","HD3 &le; &minus;40 dB","45 corners"],
+    says:"The targets an engineer hands over, and nothing else &mdash; no hint of how to reach them. They can be typed as numbers or said in plain language (&ldquo;power matters much more than eye margin&rdquo;), and an LLM turns that into reward weights, with a keyword parser as the offline fallback.",
+    file:"rl/specs.py · rl/feedback.py" },
+  { role:"layer 02 · what decides", who:"SAC policy",
+    etch:["actor","twin critics","replay buffer","entropy auto"],
+    says:"Soft Actor-Critic. The critics learn what a move is worth, the actor learns to make moves they rate highly, and every transition is replayed hundreds of times &mdash; which is the whole reason a simulator this expensive can train anything at all.",
+    file:"stable-baselines3 · scripts/train_sac.py" },
+  { role:"layer 03 · what it acts on", who:"Environment",
+    etch:["15-number observation","5 delta actions","30-step episode","held on success"],
+    says:"The Gymnasium wrapper. It hands the policy a 15-number view of the circuit, takes back five numbers in [&minus;1,&nbsp;1], scales them by 0.2 and adds them to the current design. Incremental moves, never a blind guess &mdash; which is what keeps the value function smooth.",
+    file:"rl/environment.py · rl/gym_wrapper.py" },
+  { role:"layer 04 · what it is worth", who:"Reward model",
+    etch:["normalised violations","power charge","success bonus","margin term"],
+    says:"Turns seven measured circuit quantities into one number. Normalised violations give a gradient from anywhere; the power charge separates two passing designs; the margin term pulls the design into the feasible region rather than onto its edge.",
+    file:"rl/reward.py" },
+  { role:"layer 05 · what measures", who:"Evaluator",
+    etch:[".op",".ac",".tran PRBS7","HD3 FFT","45-corner sweep"],
+    says:"Renders the netlist and runs the gates fail-fast &mdash; if the operating point does not converge, nothing else is simulated and the step costs almost nothing. It also does the measuring: peaking, power, the bit-referenced eye, HD3, noise.",
+    file:"spice/spice_engine.py" },
+  { role:"layer 06 · what simulates", who:"ngspice + OSDI",
+    etch:["ngspice 47","OpenVAF &rarr; .osdi","8 in parallel","num_threads=1"],
+    says:"The real simulator, not a surrogate. PSP103 Verilog-A compiled to OSDI and loaded natively. Pinning each ngspice to a single thread stopped eight parallel instances fighting over the cores &mdash; 90 s per step became 1.4 s.",
+    file:"spice/.spiceinit · tools/openvaf-link-shim" },
+  { role:"layer 07 · what is real", who:"The circuit",
+    etch:["IHP sg13g2 130 nm","CTLE","one-tap DFE","5 Gbps PCIe Gen 2"],
+    says:"A source-degenerated differential CTLE and a one-tap DFE on the IHP open PDK, driven by PRBS7 through a lossy channel. Every layer above exists to choose five numbers down here.",
+    file:"sized_ctle.sp" },
+];
+
+/* ---------------- one step traced through the stack ---------------- */
+function act(){
+  if (!PREV) return KEY.design.slice();
+  return KEY.design.map((v,k) => Math.max(-1, Math.min(1, (v - PREV.design[k]) / DSCALE)));
+}
+function vecHTML(pairs, hot){
+  return `<div class="vec">` + pairs.map(([n,v]) =>
+    `<span class="${hot?"hot":""}"><i>${n}</i>${v}</span>`).join("") + `</div>`;
+}
+const TRACE = [
+  { layer:0, dir:"in", hd:"The specification goes in",
+    sub:"Seven targets. Nothing about transistors, nothing about how to get there.",
+    body: () => vecHTML([["eye height","&ge; "+S.eye_vertical_min_v+" V"],["eye width","&ge; "+S.eye_horizontal_min_ui+" UI"],
+      ["peaking",S.peaking_min_db+"&ndash;"+S.peaking_max_db+" dB"],["power","&le; "+(S.power_max_w*1e3).toFixed(0)+" mW"],
+      ["HD3","&le; "+S.hd3_max_db+" dB"],["corners","45 / 45"]]) },
+  { layer:1, dir:"in", hd:"The policy proposes a move",
+    sub:"It has just watched simulation "+Math.max(1,firstOK-1)+" miss the eye height. Five numbers come out of the actor, one per knob &mdash; each a step, not a target.",
+    body: () => vecHTML(PNAMES.map((n,k)=>[n,(act()[k]>=0?"+":"")+act()[k].toFixed(2)]), true) },
+  { layer:2, dir:"in", hd:"The environment applies it",
+    sub:"Each action is scaled by 0.2, added to the current normalised design and clipped to the bounds. This is the new point in design space.",
+    body: () => vecHTML(PNAMES.map((n,k)=>[n,(KEY.design[k]>=0?"+":"")+KEY.design[k].toFixed(3)])) },
+  { layer:4, dir:"in", hd:"The evaluator renders a netlist",
+    sub:"The normalised design is mapped onto real device values and written into a SPICE deck &mdash; the same deck that ships as the deliverable.",
+    body: () => vecHTML(PNAMES.map(n=>[n, FMT[n](KEY.parameters[n])])) },
+  { layer:5, dir:"in", hd:"ngspice runs the gates, fail-fast",
+    sub:"Four analyses in order on the real PSP103 models. Any one of them failing ends the step right there, so a hopeless design costs almost nothing.",
+    body: () => {
+      const m = KEY.metrics;
+      const g = [[".op","operating point","converged","ok"],
+        [".ac","peaking at Nyquist", m.peaking_boost.toFixed(2)+" dB","ok"],
+        [".ac","supply power",(m.power*1e3).toFixed(2)+" mW","ok"],
+        [".tran","eye after the channel", m.eye_vertical_v.toFixed(3)+" V · "+m.eye_horizontal_ui.toFixed(2)+" UI", m.eye_vertical_v>=S.eye_vertical_min_v?"ok":"bad"],
+        ["FFT","HD3", m.hd3_db!=null? m.hd3_db.toFixed(1)+" dB":"not run", m.hd3_db!=null?"ok":"idle"]];
+      return `<div class="gates">` + g.map(([a,b,c,st]) =>
+        `<div class="gate"><div class="g1">${a} &nbsp;&middot;&nbsp; ${b}</div>
+         <div class="g2v" style="color:${st==="ok"?"var(--ok)":st==="bad"?"var(--bad)":"var(--faint)"}">${c}</div></div>`).join("") + `</div>`; } },
+  { layer:3, dir:"out", hd:"The reward model scores it",
+    sub:"Every violation is zero, so the sum vanishes and the success bonus fires &mdash; minus the continuous power charge, plus the margin term.",
+    body: () => `<div class="vec">` + Object.entries(KEY.violations).map(([k,v]) =>
+      `<span><i>${k}</i>${v.toFixed(2)}</span>`).join("") +
+      `<span class="hot"><i>reward</i>${KEY.reward.toFixed(2)}</span></div>` },
+  { layer:1, dir:"out", hd:"And it goes back into the buffer",
+    sub:"The transition is stored, a 256-sample batch is drawn, the critics and the actor take a gradient step &mdash; and this one ngspice evaluation will be replayed thousands more times before training ends.",
+    body: () => vecHTML([["stored","1 transition"],["batch","256"],["gradient steps","1 per env step"],
+      ["this step is replayed","thousands of times"]]) },
+];
+
+/* ---------------- sections ---------------- */
+const SECTIONS = [
+{ id:"hero", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Nebula &middot; automated analog sizing</div>
+    <h1>An agent that sizes a<br>high-speed equalizer.</h1>
+    <p class="lead">AutoAnalog-RL sizes a PCIe Gen 2 receiver equalizer &mdash; a one-stage CTLE and a one-tap DFE &mdash;
+      by driving ngspice directly, with no human in the loop. On the real IHP sg13g2 130&nbsp;nm models it reaches a
+      design that passes <b>every specification and all 45 PVT corners</b> in two to three simulations.</p>
+    <div class="grid g4" style="max-width:920px">
+      <div><div class="num clay">${firstOK}</div><div class="cap">simulations from a random start to a passing design</div></div>
+      <div><div class="num">45/45</div><div class="cap">process, voltage and temperature corners</div></div>
+      <div><div class="num">7</div><div class="cap">layers between a specification and a netlist</div></div>
+      <div><div class="num">0</div><div class="cap">human interventions</div></div>
+    </div>
+  </div>`},
+
+{ id:"problem", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The problem</div>
+    <h2>Five knobs, seven specifications,<br>and a simulator in the way.</h2>
+    <p class="lead">Every specification is a function of the same five device values, and the function is only
+      available through SPICE. Nothing is separable, so a sweep explodes and a generic optimiser spends its budget
+      in regions that do not even bias correctly.</p>
+    <div class="grid g3">
+      <div class="card"><h3>Everything is coupled</h3><p>Widening the input pair raises gain and peaking &mdash; and power,
+        and input capacitance. Degeneration buys linearity and costs DC gain.</p></div>
+      <div class="card"><h3>The spec that matters is hidden</h3><p>The eye opening only exists after a transient
+        through a lossy channel. A frequency-domain optimum can still close the eye.</p></div>
+      <div class="card"><h3>Evaluation is expensive</h3><p>Each candidate costs three ngspice analyses.
+        A blind search spends most of them on designs that fail immediately.</p></div>
+    </div>
+  </div>`},
+
+{ id:"spec", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The target</div>
+    <h2>The specification the agent is given.</h2>
+    <p class="lead">These are the numbers the reward is built from. Our internal eye targets are deliberately
+      tighter than the brief&rsquo;s, so the policy delivers margin rather than a marginal pass.</p>
+    <div class="grid g2">
+      <div class="card" style="padding:6px 8px">
+        <table><thead><tr><th>Specification</th><th class="n">Target</th></tr></thead><tbody>
+          <tr><td>HF peaking at ${DATA.nyquist_ghz} GHz Nyquist</td><td class="n">${S.peaking_min_db}&ndash;${S.peaking_max_db} dB</td></tr>
+          <tr><td>Power</td><td class="n">&le; ${(S.power_max_w*1e3).toFixed(0)} mW</td></tr>
+          <tr><td>Eye height after channel</td><td class="n">&ge; ${S.eye_vertical_min_v} V</td></tr>
+          <tr><td>Eye width</td><td class="n">&ge; ${S.eye_horizontal_min_ui} UI</td></tr>
+          <tr><td>HD3 linearity</td><td class="n">&le; ${S.hd3_max_db} dB</td></tr>
+          <tr><td>Input-referred noise</td><td class="n">&le; 1.5 mV rms</td></tr>
+          <tr><td>PVT corners</td><td class="n">45 / 45</td></tr>
+        </tbody></table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center">
+        <div class="card"><h3>Signalling</h3><p>NRZ PRBS7 at ${DATA.data_rate_gbps} Gbps, one unit interval
+          ${DATA.unit_interval_ps} ps, through a two-section RC channel with ${DATA.channel_loss_db} dB of loss at Nyquist.</p></div>
+        <div class="card"><h3>Technology</h3><p>IHP sg13g2 130 nm open PDK, PSP103 transistor models compiled with
+          OpenVAF to OSDI and run natively in ngspice &mdash; about 0.6 s per agent step with eight simulators in parallel.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"circuit", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The circuit</div>
+    <h2>A source-degenerated CTLE.</h2>
+    <p class="lead">Degeneration throws away gain at DC and returns it at high frequency: <b>C<sub>s</sub></b> shorts
+      <b>R<sub>s</sub></b> as frequency rises, placing a zero near 1/(2&middot;R<sub>s</sub>C<sub>s</sub>) and boosting the
+      band the channel attenuated.</p>
+    <div class="grid g2" style="align-items:center">
+      <div class="card">${schematicSVG()}</div>
+      <div class="card" style="padding:6px 8px">
+        <table><thead><tr><th>Parameter</th><th class="n">Range</th><th>Raises</th></tr></thead><tbody>
+          <tr><td>W<sub>in</sub> input width</td><td class="n">0.5 &ndash; 50 &micro;m</td><td class="fine">gain, capacitance</td></tr>
+          <tr><td>R<sub>load</sub></td><td class="n">100 &ndash; 1000 &Omega;</td><td class="fine">gain, costs headroom</td></tr>
+          <tr><td>I<sub>bias</sub> tail current</td><td class="n">0.1 &ndash; 2 mA</td><td class="fine">gain, power, linearity</td></tr>
+          <tr><td>R<sub>s</sub> degeneration</td><td class="n">10 &ndash; 500 &Omega;</td><td class="fine">peaking, linearity</td></tr>
+          <tr><td>C<sub>s</sub> degeneration</td><td class="n">1 fF &ndash; 1 pF</td><td class="fine">moves the zero</td></tr>
+          <tr><td>DFE tap <span class="fine">(optional 6th)</span></td><td class="n">&minus;0.5 &hellip; +0.5</td><td class="fine">cancels post-cursor ISI</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"stack", stack:true, html:`
+  <div class="wrap">
+    <div class="eyebrow">The architecture</div>
+    <h2 style="font-size:32px;margin-bottom:4px">Open it up, one layer at a time.</h2>
+    <p class="fine" style="margin-bottom:14px">Seven layers sit between a specification and a sized netlist.
+      Press <span class="kbd">&rarr;</span> to lift the next one off &mdash; or click any layer.</p>
+    <div class="arch">
+      <div class="stage"><div class="stack" id="stack3d"></div></div>
+      <div class="tags" id="tags"></div>
+      <div class="panel">
+        <div class="role" id="layRole"></div>
+        <div class="who" id="layWho"></div>
+        <div class="says" id="laySays"></div>
+        <div class="file" id="layFile"></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"trace", trace:true, html:`
+  <div class="wrap">
+    <div class="eyebrow">The architecture, running</div>
+    <h2 style="font-size:32px;margin-bottom:4px">One step, all the way down and back.</h2>
+    <p class="fine" style="margin-bottom:14px">Real numbers from simulation ${firstOK} of the rollout &mdash;
+      the step where the design first passed everything.</p>
+    <div class="trace">
+      <div class="rail" id="rail"></div>
+      <div class="stagebox">
+        <div class="hd" id="trHd"></div>
+        <div class="sub" id="trSub"></div>
+        <div id="trBody"></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"reward", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The reward</div>
+    <h2>How a circuit measurement<br>becomes a number to maximise.</h2>
+    <pre style="max-width:960px"><span class="c">// violation = how far a spec is missed, normalised so 1.0 = a full spec&rsquo;s worth</span>
+reward = <span class="k">&minus;</span> &Sigma; w&#7522; &middot; violation&#7522;  <span class="k">&minus;</span>  w_eff &middot; min(1, P / P_max)
+         <span class="k">+</span> [all specs met] &middot; ( 20 + w_margin &middot; min(1, tightest margin) )
+
+<span class="c">// DC operating point failed</span>
+reward = <span class="k">&minus;</span>10</pre>
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card"><h3>A gradient from anywhere</h3><p>The violation sum points toward feasibility even when
+        every specification is missed, so the agent always knows which way to move.</p></div>
+      <div class="card"><h3>A gradient inside</h3><p>The continuous power charge means two passing designs are not
+        equal &mdash; the cheaper one scores higher.</p></div>
+      <div class="card"><h3>Margin, not the edge</h3><p>The success bonus plus a margin term pulls the design into
+        the feasible region instead of onto its boundary.</p></div>
+    </div>
+  </div>`},
+
+{ id:"agent", html:`
+  <div class="wrap center">
+    <div class="eyebrow">The agent</div>
+    <h2>Soft Actor-Critic, because simulations are expensive.</h2>
+    <div class="grid g2" style="align-items:start">
+      <div>
+        <p class="lead" style="margin-bottom:18px">A critic learns what a move is worth; an actor learns to make
+          moves the critic rates highly. Every transition is stored and replayed hundreds of times, so one ngspice
+          evaluation trains the networks again and again.</p>
+        <div class="grid" style="gap:12px">
+          <div class="card"><h3>Observation &middot; 15 numbers</h3><p>5 normalised knob values &middot; DC-valid flag &middot;
+            4 scaled metrics &middot; 5 spec violations. The agent sees how the circuit <em>responded</em>, which is what
+            lets one policy work at any corner.</p></div>
+          <div class="card"><h3>Action &middot; a step, not a guess</h3><p>Five values in [&minus;1,&nbsp;1], scaled by 0.2 and
+            added to the current design. Incremental moves keep the value function smooth.</p></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="chartbox" style="height:190px"><h3>What it learned &middot; feasible steps, smoothed</h3>
+          <div class="body fillbox"><canvas id="train"></canvas></div></div>
+        <div class="card" style="padding:6px 8px">
+          <table><thead><tr><th>Setting</th><th class="n">Value</th></tr></thead><tbody>
+            <tr><td>Algorithm</td><td class="n">SAC (stable-baselines3)</td></tr>
+            <tr><td>Parallel environments</td><td class="n">8 &times; ngspice</td></tr>
+            <tr><td>Episode</td><td class="n">30 steps, random start</td></tr>
+            <tr><td>Held after success</td><td class="n">yes &mdash; margin keeps paying</td></tr>
+            <tr><td>Batch / gradient steps</td><td class="n">256 / 1 per step</td></tr>
+            <tr><td>Entropy coefficient</td><td class="n">auto, from 0.1</td></tr>
+            <tr><td>Training cost</td><td class="n">&asymp; 2 h on one machine, once</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"live", live:true, html:`
+  <div class="wrap">
+    <div class="eyebrow">Live &middot; a real rollout on the IHP models</div>
+    <h2 style="font-size:32px;margin-bottom:4px">Watch it size the circuit.</h2>
+    <p class="fine" style="margin-bottom:14px">Random starting design at a random PVT corner
+      (<b id="cornerName"></b>). Every number below came out of ngspice.
+      Press <span class="kbd">&rarr;</span> to run the next simulation.</p>
+    <div class="rollout">
+      <div class="rollcol">
+        <div class="card" style="padding:14px 16px"><div id="knobs"></div></div>
+        <div class="card" style="padding:12px 16px"><div class="cap" id="movecap"></div></div>
+        <div class="verdict" id="verdict" style="margin-top:auto">
+          <div class="big" id="rewardVal">&mdash;</div>
+          <div class="cap" id="rewardSub">reward</div>
+        </div>
+      </div>
+      <div class="rollcol">
+        <div class="eyebox"><div class="eyehead" id="eyenote"></div>
+          <div class="fillbox"><canvas id="eye"></canvas></div></div>
+      </div>
+      <div class="rollcol">
+        <div class="card" style="padding:12px 16px"><div id="specs"></div></div>
+        <div class="chartbox" style="flex:1"><h3 id="miniTitle">AC response</h3>
+          <div class="body fillbox"><canvas id="ac"></canvas></div></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"results", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Results</div>
+    <h2>Seven runs on the real models.</h2>
+    <p class="lead">Every policy design passes peaking, power, eye height and width, HD3, noise and all 45 corners.
+      Three seeds of the base configuration agree to within a few percent.</p>
+    <div class="card" style="padding:6px 8px">
+      <table><thead><tr><th>Run</th><th>Variant</th><th class="n">Rollouts feasible</th><th class="n">Simulations to feasible</th><th>Best design</th></tr></thead><tbody>
+        <tr><td>seed 1 &middot; 2 &middot; 3</td><td class="fine">base configuration</td><td class="n">60 / 60</td><td class="n">2 &ndash; 3</td><td class="fine">0.32&ndash;0.35 V &middot; 1.2 mW &middot; 45/45</td></tr>
+        <tr><td>hd3</td><td class="fine">HD3 enforced in the reward</td><td class="n">20 / 20</td><td class="n">2.5</td><td class="fine">0.335 V &middot; 1.24 mW &middot; &minus;58 dB</td></tr>
+        <tr><td>pvt</td><td class="fine">curriculum across 45 corners</td><td class="n">24 / 24</td><td class="n">2</td><td class="fine">0.370 V &middot; 1.12 mW &middot; &minus;61.9 dB</td></tr>
+        <tr><td>equalizer</td><td class="fine">CTLE + DFE tap in the action</td><td class="n">20 / 20</td><td class="n">3</td><td class="fine">0.355 V post-DFE &middot; 45/45</td></tr>
+        <tr><td>gen1</td><td class="fine">retuned to 1.25 GHz Nyquist</td><td class="n">20 / 20</td><td class="n">2</td><td class="fine">5.23 dB @ 1.25 GHz &middot; 45/45</td></tr>
+      </tbody></table>
+    </div>
+    <div class="grid g4" style="margin-top:22px">
+      <div><div class="num clay">2.53 &plusmn; 0.06</div><div class="cap">mean simulations to a feasible design, over three seeds</div></div>
+      <div><div class="num">~2&#8202;000</div><div class="cap">environment steps to converge, every run</div></div>
+      <div><div class="num">95&#8202;%</div><div class="cap">of late training steps meet every specification</div></div>
+      <div><div class="num">0.6 s</div><div class="cap">per environment step, eight simulators wide</div></div>
+    </div>
+  </div>`},
+
+{ id:"baselines", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Comparison</div>
+    <h2>Against conventional search.</h2>
+    <p class="lead">Same models, same reward. The policy is <b>trained once</b> and then sizes any new instance;
+      CMA-ES and random search start from scratch every time.</p>
+    <div class="grid g2" style="align-items:stretch">
+      <div class="chartbox" style="min-height:300px"><h3>Reward vs simulations</h3>
+        <div class="body fillbox"><canvas id="race"></canvas></div>
+        <div class="fine" id="raceLegend" style="margin-top:6px"></div></div>
+      <div class="card" style="padding:6px 8px;display:flex;align-items:center">
+        <table><thead><tr><th>Method</th><th class="n">First feasible</th><th class="n">Per new design</th></tr></thead><tbody>
+          <tr><td><b>SAC policy</b></td><td class="n">sim ${firstOK}</td><td class="n">2&ndash;3 simulations</td></tr>
+          <tr><td>CMA-ES</td><td class="n">sim ${(B["CMA-ES"]||{}).first_feasible ?? "&mdash;"}</td><td class="n">~10, then 400 to refine</td></tr>
+          <tr><td>Random search</td><td class="n">sim ${(B["random search"]||{}).first_feasible ?? "&mdash;"}</td><td class="n">~13 per feasible hit</td></tr>
+          <tr><td>AC-only bounded search</td><td class="n">never</td><td class="n">eye 0.160 V &mdash; fails</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <p class="fine" style="margin-top:16px;max-width:900px">Given 400 simulations per design CMA-ES reaches the same
+      quality &mdash; we say so in the report. The policy&rsquo;s advantage is amortisation: one training run, then a couple
+      of simulations for a new start, a new corner, or a re-weighted reward.</p>
+  </div>`},
+
+{ id:"pvt", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Robustness</div>
+    <h2>Trained across the corners,<br>not just checked at them.</h2>
+    <p class="lead">Stage one trains at the nominal corner. Stage two resumes the same policy and simulates every
+      episode at a random one of the 45 corners &mdash; without telling it which, so it has to read the corner from the
+      metrics it observes.</p>
+    <div class="grid g2" style="align-items:center">
+      <div class="chartbox" style="height:210px"><h3>45 corners &middot; this design</h3>
+        <div class="body"><div class="pvt" id="pvtGrid"></div></div>
+        <div class="fine" id="pvtNote" style="margin-top:8px"></div></div>
+      <div class="grid" style="gap:14px">
+        <div class="card"><h3>24 / 24 rollouts</h3><p>started at random designs <em>and</em> random corners reached a
+          fully passing design &mdash; median two simulations.</p></div>
+        <div class="card"><h3>95 &ndash; 96&#8202;% feasible</h3><p>of training steps from the first window, per process
+          corner: SS 97 &middot; FS 96 &middot; FF 95 &middot; TT 95 &middot; SF 94.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"extensions", html:`
+  <div class="wrap center">
+    <div class="eyebrow">Beyond the base loop</div>
+    <h2>Three extensions.</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Tunable Nyquist</h3><p style="margin-bottom:10px">The data rate is a specification input.
+        Retargeting the same policy to 1.25 GHz &mdash; PCIe Gen 1 &mdash; gives <b>5.23 dB</b> of peaking where the 2.5 GHz
+        design gave only 2.87, with 20/20 rollouts feasible.</p>
+        <pre style="font-size:11px;padding:10px 12px">--spec nyquist_frequency_hz=1.25e9</pre></div>
+      <div class="card"><h3>The whole equalizer</h3><p style="margin-bottom:10px">A sixth action sizes the one-tap DFE.
+        The eye is measured against the <em>transmitted</em> bits with error propagation modelled; training holds a
+        0.51 V post-DFE eye against 0.35 V for the CTLE alone.</p>
+        <pre style="font-size:11px;padding:10px 12px">--equalizer</pre></div>
+      <div class="card"><h3>Plain-language weights</h3><p style="margin-bottom:10px">An engineer says what matters and
+        the reward weights follow &mdash; Claude produces them as validated JSON, with a keyword parser as the offline
+        fallback.</p>
+        <pre style="font-size:11px;padding:10px 12px">"power matters much more
+ than eye margin"
+&rarr; power &times;3 &middot; eye &times;0.33</pre></div>
+    </div>
+  </div>`},
+
+{ id:"findings", html:`
+  <div class="wrap center">
+    <div class="eyebrow">What the agent found</div>
+    <h2>Two measurement flaws,<br>exposed by being exploited.</h2>
+    <p class="quote" style="margin-bottom:26px">An optimiser that can exploit a metric will find its flaws before you do.
+      Both of these had survived the manual flow; both are now fixed and unit-tested.</p>
+    <div class="grid g2">
+      <div class="card"><h3>HD3 read &minus;25 dB on every design</h3>
+        <p style="margin-bottom:8px">The FFT analysed 2.5 cycles of a 100 MHz tone with a rectangular window, so the
+        fundamental fell between bins and its leakage filled the 300 MHz bin. Sweeping every knob could not move the
+        number &mdash; that is what gave it away.</p>
+        <p><b style="color:var(--ok)">Fixed:</b> integer-cycle Hann window &rarr; &minus;58 dB. The circuit was always linear enough.</p></div>
+      <div class="card"><h3>The DFE eye rewarded its own tap</h3>
+        <p style="margin-bottom:8px">The eye was labelled by the DFE&rsquo;s own decisions, so a large tap separated the two
+        classes by itself. The agent drove the tap to its bound and reported 0.70 V while the receiver decided 54 of
+        127 bits wrongly.</p>
+        <p><b style="color:var(--ok)">Fixed:</b> measured against the transmitted PRBS bits, bit errors counted, zero eye on any error.</p></div>
+    </div>
+  </div>`},
+
+{ id:"deliverables", html:`
+  <div class="wrap center">
+    <div class="eyebrow">What ships</div>
+    <h2>Specifications in, a sized circuit out.</h2>
+    <p class="lead">Not an RL score &mdash; an actual netlist with the device values, the model source and the DFE tap,
+      alongside every measurement that justified it.</p>
+    <div class="grid g2" style="align-items:start">
+      <pre id="nlOut"></pre>
+      <div class="grid" style="gap:12px">
+        <div class="card"><h3>Per design</h3><p><code>sized_ctle.sp</code> &middot; <code>validation.json</code> with every
+          gate result, the 45-corner sweep, HD3, noise and area &middot; eye, AC and PVT plots.</p></div>
+        <div class="card"><h3>Per run</h3><p>Per-step CSV, monitor files, checkpoints every 4k steps, the final model,
+          and the exact configuration used.</p></div>
+        <div class="card"><h3>Reproducible</h3><p>One command per stage, 59 tests that run without a simulator, and a
+          Windows toolchain for the PSP103 OSDI models.</p></div>
+      </div>
+    </div>
+  </div>`},
+
+{ id:"close", html:`
+  <div class="wrap center">
+    <div class="eyebrow">In summary</div>
+    <h1 style="font-size:50px">Reinforcement learning,<br>closed around SPICE.</h1>
+    <p class="lead">A trained policy sizes a PCIe Gen 2 equalizer from a random start in two to three simulations,
+      passes every measured specification and all 45 PVT corners, retargets to a new data rate, and writes the netlist.
+      Random search needs about thirteen simulations per feasible design; CMA-ES about nine, every time.</p>
+    <div class="rule"></div>
+    <div class="grid g3">
+      <div><div class="num ok">${firstOK}</div><div class="cap">simulations to a passing design</div></div>
+      <div><div class="num ok">45/45</div><div class="cap">PVT corners</div></div>
+      <div><div class="num ok">59</div><div class="cap">automated tests</div></div>
+    </div>
+    <p class="fine" style="margin-top:26px">github.com/Foolish-Genius/al_nebula</p>
+  </div>`},
+];
+
+/* ---------------- drawing helpers ---------------- */
+function ctxFor(id){
+  const c = $(id); if (!c) return null;
+  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) return null;
+  c.width = r.width*dpr; c.height = r.height*dpr;
+  const x = c.getContext("2d"); x.scale(dpr, dpr); x.clearRect(0,0,r.width,r.height);
+  return [x, r.width, r.height];
+}
+function frame(x,w,h,pad){ x.strokeStyle="#332F29"; x.lineWidth=1; x.strokeRect(pad.l,pad.t,w-pad.l-pad.r,h-pad.t-pad.b); }
+
+function renderKnobs(step, prev){
+  $("knobs").innerHTML = Object.keys(step.parameters).map(n => {
+    const [lo,hi] = DATA.bounds[n] || [-0.5,0.5], v = step.parameters[n];
+    const pct = Math.max(0, Math.min(100, (v-lo)/(hi-lo)*100));
+    let d = "";
+    if (prev){ const diff = v - prev.parameters[n];
+      if (Math.abs(diff) > Math.abs(v)*1e-4)
+        d = `<span class="d">${diff>0?"↑":"↓"} ${FMT[n]?FMT[n](Math.abs(diff)):Math.abs(diff).toFixed(3)}</span>`; }
+    return `<div class="knob" style="margin-bottom:10px">
+      <div class="r"><span class="nm">${LABEL[n]||n}</span><span class="v">${FMT[n]?FMT[n](v):v.toFixed(3)}${d}</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
+  }).join("");
+}
+function specRows(){
+  const r = [
+    ["peaking_boost","HF peaking", m=>m.peaking_boost, v=>v==null?"—":v.toFixed(2)+" dB"],
+    ["power","Power", m=>m.power, v=>v==null?"—":(v*1e3).toFixed(2)+" mW"],
+    ["eye_vertical_v","Eye height", m=>m.eye_vertical_v, v=>v==null?"—":v.toFixed(3)+" V"],
+    ["eye_horizontal_ui","Eye width", m=>m.eye_horizontal_ui, v=>v==null?"—":v.toFixed(2)+" UI"],
+  ];
+  if (S.enforce_hd3) r.push(["hd3","HD3", m=>m.hd3_db, v=>v==null?"—":v.toFixed(1)+" dB"]);
+  return r;
+}
+function renderSpecs(step){
+  $("specs").innerHTML = specRows().map(([k,name,get,show]) => {
+    const v = get(step.metrics);
+    let viol = step.violations[k];
+    if (k === "peaking_boost") viol = Math.max(step.violations.peaking_boost ?? 0, step.violations.peaking_ceiling ?? 0);
+    const ok = viol != null && viol <= 0, pending = v == null;
+    return `<div class="specrow"><span>${name}</span><span><span class="sv">${show(v)}</span>
+      <span class="tag ${pending?"idle":ok?"ok":"bad"}">${pending?"not run":ok?"pass":"fail"}</span></span></div>`;
+  }).join("");
+  $("verdict").classList.toggle("pass", step.all_specs_met);
+  $("rewardVal").textContent = step.reward.toFixed(2);
+  $("rewardSub").textContent = !step.all_specs_met ? "reward — specifications still missed"
+    : step.step === firstOK ? "all specifications met at simulation " + firstOK
+    : "feasible since simulation " + firstOK + " — now growing margin";
+}
+
+function drawEye(step){
+  const c = ctxFor("eye"); if (!c) return; const [x,w,h] = c;
+  const pad = {l:46,r:14,t:12,b:26}, traces = step.eye || [];
+  if (!traces.length){ frame(x,w,h,pad); x.fillStyle="#CE6A56"; x.font="13px system-ui";
+    x.fillText("DC gate failed — nothing further simulated", pad.l+18, h/2);
+    $("eyenote").innerHTML = "<span>the operating point did not converge</span>"; return; }
+  let lo=Infinity, hi=-Infinity;
+  for (const t of traces) for (const v of t){ if(v<lo)lo=v; if(v>hi)hi=v; }
+  const span = Math.max(hi-lo,.05), mid=(hi+lo)/2; lo=mid-span*.62; hi=mid+span*.62;
+  const X = u => pad.l + u/2*(w-pad.l-pad.r), Y = v => pad.t + (hi-v)/(hi-lo)*(h-pad.t-pad.b);
+  const eh = S.eye_vertical_min_v, ew = S.eye_horizontal_min_ui;
+  const cx = step.metrics.eye_center_ui != null ? step.metrics.eye_center_ui : .5;
+  x.fillStyle="rgba(127,176,138,.13)"; x.strokeStyle="rgba(127,176,138,.5)"; x.setLineDash([4,3]);
+  const bx=X(cx+.5-ew/2), bw=X(cx+.5+ew/2)-bx, by=Y(mid+eh/2), bh=Y(mid-eh/2)-by;
+  x.fillRect(bx,by,bw,bh); x.strokeRect(bx,by,bw,bh); x.setLineDash([]);
+  x.fillStyle="rgba(127,176,138,.9)"; x.font="10.5px system-ui"; x.fillText("required opening", bx+5, by-5);
+  frame(x,w,h,pad);
+  x.strokeStyle="rgba(217,119,87,.24)"; x.lineWidth=1;
+  for (const t of traces){ x.beginPath();
+    t.forEach((v,i)=>{ const u=i/(t.length-1)*2; i?x.lineTo(X(u),Y(v)):x.moveTo(X(u),Y(v)); }); x.stroke(); }
+  x.fillStyle="#867C6E"; x.font="10.5px system-ui";
+  for (const u of [0,.5,1,1.5,2]) x.fillText(u.toFixed(1), X(u)-7, h-10);
+  for (let k=0;k<=4;k++){ const v=lo+(hi-lo)*k/4; x.fillText(v.toFixed(2), 8, Y(v)+3); }
+  const m = step.metrics, okH = m.eye_vertical_v>=eh, okW = m.eye_horizontal_ui>=ew;
+  $("eyenote").innerHTML =
+    `<span>eye height <b style="color:${okH?"var(--ok)":"var(--bad)"}">${m.eye_vertical_v.toFixed(3)} V</b> / ${eh} V</span>`+
+    `<span>eye width <b style="color:${okW?"var(--ok)":"var(--bad)"}">${m.eye_horizontal_ui.toFixed(2)} UI</b> / ${ew} UI</span>`+
+    `<span style="margin-left:auto">2 UI after the channel</span>`;
+}
+function drawAC(step){
+  const c = ctxFor("ac"); if (!c) return; const [x,w,h] = c;
+  const pad={l:34,r:12,t:12,b:20}, ac=step.ac||{f:[],g:[]};
+  if (!ac.f.length){ frame(x,w,h,pad); return; }
+  const f0=Math.log10(ac.f[0]), f1=Math.log10(ac.f[ac.f.length-1]);
+  let lo=Math.min(...ac.g), hi=Math.max(...ac.g); const m=Math.max((hi-lo)*.2,.6); lo-=m; hi+=m;
+  const X=f=>pad.l+(Math.log10(f)-f0)/(f1-f0)*(w-pad.l-pad.r), Y=g=>pad.t+(hi-g)/(hi-lo)*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  const nyq=DATA.nyquist_ghz*1e9;
+  x.strokeStyle="#4A443A"; x.setLineDash([4,3]); x.beginPath();
+  x.moveTo(X(nyq),pad.t); x.lineTo(X(nyq),h-pad.b); x.stroke(); x.setLineDash([]);
+  x.fillStyle="#867C6E"; x.font="9.5px system-ui"; x.fillText("Nyquist", X(nyq)+4, pad.t+10);
+  x.strokeStyle="#D97757"; x.lineWidth=1.9; x.beginPath();
+  ac.f.forEach((f,i)=> i?x.lineTo(X(f),Y(ac.g[i])):x.moveTo(X(f),Y(ac.g[i]))); x.stroke();
+  const pk=step.metrics.peaking_boost;
+  if (pk!=null){ x.fillStyle="#F4EFE6"; x.font="11.5px system-ui"; x.fillText(pk.toFixed(2)+" dB peaking", pad.l+6, pad.t+11); }
+}
+function drawTraining(){
+  const c = ctxFor("train"); if (!c) return; const [x,w,h] = c;
+  const pad={l:34,r:12,t:12,b:20}, t=DATA.training||{};
+  if (!t.step || !t.step.length){ frame(x,w,h,pad); return; }
+  const s0=t.step[0], s1=t.step[t.step.length-1];
+  const X=v=>pad.l+(v-s0)/Math.max(1,s1-s0)*(w-pad.l-pad.r), Y=v=>pad.t+(100-v)/100*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  x.strokeStyle="#2A2622"; x.beginPath();
+  for (const g of [25,50,75]){ x.moveTo(pad.l,Y(g)); x.lineTo(w-pad.r,Y(g)); } x.stroke();
+  x.strokeStyle="#D97757"; x.lineWidth=2; x.beginPath();
+  t.step.forEach((v,i)=> i?x.lineTo(X(v),Y(t.feasible[i])):x.moveTo(X(v),Y(t.feasible[i]))); x.stroke();
+  x.fillStyle="#867C6E"; x.font="10px system-ui";
+  x.fillText("100%",6,Y(100)+9); x.fillText("0",6,Y(0)-2);
+  x.fillText(s0+" steps",pad.l,h-7); x.fillText(s1+" steps",w-pad.r-52,h-7);
+  const end=t.feasible[t.feasible.length-1];
+  x.fillStyle="#F4EFE6"; x.font="11.5px system-ui";
+  x.fillText(end.toFixed(0)+"% of steps meet every spec", pad.l+8, Math.max(Y(end)-9, pad.t+24));
+}
+
+function drawRace(){
+  const c = ctxFor("race"); if (!c) return; const [x,w,h] = c;
+  const pad={l:36,r:14,t:14,b:24};
+  const rs = DATA.steps.map(s=>s.reward), bases = Object.entries(B);
+  const span = Math.max(DATA.steps.length, ...bases.map(([,b])=>b.reward.length));
+  let lo=-3, hi=Math.max(...rs,22);
+  for (const [,b] of bases) lo=Math.min(lo, Math.min(...b.reward));
+  lo=Math.max(lo,-12);
+  const X=i=>pad.l+i/Math.max(1,span-1)*(w-pad.l-pad.r), Y=r=>pad.t+(hi-Math.max(lo,r))/(hi-lo)*(h-pad.t-pad.b);
+  frame(x,w,h,pad);
+  x.strokeStyle="#2A2622"; x.beginPath(); x.moveTo(pad.l,Y(0)); x.lineTo(w-pad.r,Y(0)); x.stroke();
+  const COL={"CMA-ES":"#C9B89A","random search":"#6B6155"};
+  for (const [label,b] of bases){
+    x.strokeStyle=COL[label]||"#6B6155"; x.lineWidth=1.3; x.beginPath();
+    b.reward.forEach((r,i)=> i?x.lineTo(X(i),Y(r)):x.moveTo(X(i),Y(r))); x.stroke();
+    if (b.first_feasible && b.first_feasible<=b.reward.length){ const i=b.first_feasible-1;
+      x.fillStyle=COL[label]||"#6B6155"; x.beginPath(); x.arc(X(i),Y(b.reward[i]),3.5,0,7); x.fill(); }
+  }
+  x.strokeStyle="#D97757"; x.lineWidth=2.4; x.beginPath();
+  rs.forEach((r,i)=> i?x.lineTo(X(i),Y(r)):x.moveTo(X(i),Y(r))); x.stroke();
+  rs.forEach((r,i)=>{ x.fillStyle = DATA.steps[i].all_specs_met?"#7FB08A":"#CE6A56";
+    x.beginPath(); x.arc(X(i),Y(r),4,0,7); x.fill(); });
+  x.fillStyle="#867C6E"; x.font="10px system-ui";
+  x.fillText("sim 1", pad.l, h-8); x.fillText("sim "+span, w-pad.r-34, h-8);
+  x.fillText(hi.toFixed(0), 8, Y(hi)+9); x.fillText(lo.toFixed(0), 8, Y(lo)-2);
+  const parts = [`<b style="color:#D97757">&#9644;</b> policy &middot; feasible at sim ${firstOK}`];
+  for (const [label,b] of bases)
+    parts.push(`<b style="color:${COL[label]||"#6B6155"}">&#9644;</b> ${label} &middot; sim ${b.first_feasible||"—"}`);
+  $("raceLegend").innerHTML = parts.join(" &nbsp;&nbsp; ");
+}
+function fillPVT(){
+  if (!DATA.pvt || !$("pvtGrid")) return;
+  $("pvtGrid").innerHTML = DATA.pvt.map(p=>`<i class="${p.pass?"ok":""}" title="${p.name}"></i>`).join("");
+  $("pvtNote").textContent = DATA.pvt.filter(p=>p.pass).length + "/" + DATA.pvt.length
+    + " corners pass — 5 process × 3 supply × 3 temperature, peaking inside "
+    + S.peaking_min_db + "–" + S.peaking_max_db + " dB everywhere.";
+}
+function fillNetlist(){
+  if (!$("nlOut") || !DATA.netlist) return;
+  $("nlOut").textContent = DATA.netlist.split(NL).filter(l => l.trim()).slice(0, 14)
+    .map(l => l.length > 56 ? l.slice(0, 55) + "…" : l).join(NL);
+}
+
+/* ---------------- the exploded stack ---------------- */
+const GAP_OPEN = 62, GAP_SHUT = 9;
+function buildStack(){
+  const host = $("stack3d"); if (!host || host.childElementCount) return;
+  host.innerHTML = LAYERS.map((L,i) =>
+    `<div class="plate" data-i="${i}"><div class="idx">${String(i+1).padStart(2,"0")}</div>
+     <div class="etch">${L.etch.map(e=>"<b>"+e+"</b>").join("")}</div></div>`).join("");
+  $("tags").innerHTML = LAYERS.map((L,i) => `<b data-i="${i}"><i>${String(i+1).padStart(2,"0")}</i>${L.who}</b>`).join("");
+  $("tags").onclick = e => { const b = e.target.closest("b"); if (b){ lay = +b.dataset.i; paint(); } };
+  host.onclick = e => { const p = e.target.closest(".plate"); if (p){ lay = +p.dataset.i; paint(); } };
+}
+function renderStack(){
+  buildStack();
+  const host = $("stack3d");
+  let z = 0;
+  const drop = LAYERS.slice(0,-1).reduce((a,_,i) => a + (i < lay ? GAP_OPEN : GAP_SHUT), 0);
+  host.style.transform = "translate(-50%,-50%) rotateX(61deg) rotateZ(-40deg) translateZ("
+    + (drop/2).toFixed(1) + "px)";
+  LAYERS.forEach((L,i) => {
+    const el = host.children[i];
+    el.style.transform = "translateZ(" + z.toFixed(1) + "px)";
+    el.style.zIndex = String(LAYERS.length - i);
+    el.classList.toggle("shown", i <= lay);
+    el.classList.toggle("live", i === lay);
+    $("tags").children[i].className = (i <= lay ? "shown " : "") + (i === lay ? "live" : "");
+    z -= (i < lay ? GAP_OPEN : GAP_SHUT);
+  });
+  const L = LAYERS[lay];
+  $("layRole").innerHTML = L.role;
+  $("layWho").innerHTML = L.who;
+  $("laySays").innerHTML = L.says;
+  $("layFile").innerHTML = L.file;
+}
+
+/* ---------------- one step through the stack ---------------- */
+function renderTrace(){
+  const T = TRACE[tr];
+  $("rail").innerHTML = LAYERS.map((L,i) => {
+    const at = T.layer === i;
+    const touched = TRACE.slice(0, tr+1).some(s => s.layer === i);
+    return `<div class="rung ${at?"live":touched?"done":""}"><i></i><span>${L.who}</span>`
+      + (at ? `<span class="dir">${T.dir === "in" ? "↓ in" : "↑ out"}</span>` : "")
+      + `</div>`;
+  }).join("");
+  $("trHd").innerHTML = (tr+1) + ". " + T.hd
+    + ` <span style="color:var(--clay);font-size:20px">${T.dir === "in" ? "↓" : "↑"}</span>`;
+  $("trSub").innerHTML = T.sub;
+  $("trBody").innerHTML = T.body();
+}
+
+/* ---------------- live rollout ---------------- */
+const VERB = {
+  W_in:["widened the input pair","narrowed the input pair"],
+  R_load:["raised the load resistance","lowered the load resistance"],
+  I_bias:["raised the tail current","cut the tail current"],
+  R_s:["increased degeneration","reduced degeneration"],
+  C_s:["moved the zero down in frequency","moved the zero up in frequency"],
+  dfe_tap:["strengthened the DFE tap","weakened the DFE tap"],
+};
+function moveCaption(step, prev){
+  if (!prev) return "<b>Simulation 1 &middot; a random starting design.</b> This is where the policy is dropped, "
+    + "at a corner it is not told the name of.";
+  const moves = Object.keys(step.parameters).map(n => {
+    const [lo,hi] = DATA.bounds[n] || [-0.5,0.5];
+    return {n, f:(step.parameters[n]-prev.parameters[n])/(hi-lo)};
+  }).filter(m => Math.abs(m.f) > 0.01).sort((a,b)=>Math.abs(b.f)-Math.abs(a.f)).slice(0,2);
+  const said = moves.map(m => VERB[m.n] ? VERB[m.n][m.f>0?0:1] : m.n).join(" and ");
+  const head = "<b>Simulation " + step.step + ".</b> ";
+  if (!said) return head + "The policy is holding the design it has.";
+  if (step.all_specs_met && prev.all_specs_met)
+    return head + "Already feasible &mdash; it " + said + " to widen the margin, which is what the bonus term pays for.";
+  if (step.all_specs_met) return head + "It " + said + ". Every specification now passes.";
+  return head + "It " + said + ", following the violation gradient.";
+}
+function renderLive(){
+  const step = DATA.steps[sim], prev = sim ? DATA.steps[sim-1] : null;
+  $("cornerName").textContent = DATA.corner;
+  renderKnobs(step, prev); renderSpecs(step); drawEye(step); drawAC(step);
+  $("miniTitle").textContent = "AC response · simulation " + (sim+1) + " of " + DATA.steps.length;
+  $("movecap").innerHTML = moveCaption(step, prev);
+}
+
+/* ---------------- navigation ---------------- */
+let idx = 0, sim = 0, lay = 0, tr = 0, seen = new Set([0]);
+const main = $("main");
+SECTIONS.forEach(s => { const el = document.createElement("section"); el.id = "sec-"+s.id; el.innerHTML = s.html; main.appendChild(el); });
+$("dots").innerHTML = SECTIONS.map((s,i)=>`<i class="dot" data-i="${i}"></i>`).join("");
+$("dots").onclick = e => { const i = e.target.dataset.i; if (i != null) go(+i); };
+
+function paint(){
+  document.querySelectorAll("section").forEach((el,i)=> el.classList.toggle("on", i===idx));
+  document.querySelectorAll(".dot").forEach((d,i)=>{ d.classList.toggle("on", i===idx); d.classList.toggle("seen", seen.has(i) && i!==idx); });
+  $("bar").style.width = ((idx+1)/SECTIONS.length*100) + "%";
+  $("count").textContent = String(idx+1).padStart(2,"0") + " / " + SECTIONS.length;
+  $("back").disabled = idx === 0 && sim === 0 && lay === 0 && tr === 0;
+  const s = SECTIONS[idx];
+  if (s.stack){ renderStack(); $("fwd").textContent = lay + 1 < LAYERS.length ? "Lift the next layer" : "Next"; }
+  else if (s.trace){ renderTrace(); $("fwd").textContent = tr + 1 < TRACE.length ? "Follow it down" : "Next"; }
+  else if (s.live){ renderLive(); $("fwd").textContent = sim + 1 < DATA.steps.length ? "Run next simulation" : "Next"; }
+  else $("fwd").textContent = idx === SECTIONS.length - 1 ? "Restart" : "Next";
+  if (s.id === "agent") drawTraining();
+  if (s.id === "baselines") drawRace();
+  if (s.id === "pvt") fillPVT();
+  if (s.id === "deliverables") fillNetlist();
+}
+function go(i, atEnd){
+  const from = idx;
+  idx = Math.max(0, Math.min(SECTIONS.length-1, i));
+  seen.add(idx);
+  if (idx !== from){
+    const s = SECTIONS[idx];
+    sim = s.live  && atEnd ? DATA.steps.length-1 : 0;
+    lay = s.stack && atEnd ? LAYERS.length-1 : 0;
+    tr  = s.trace && atEnd ? TRACE.length-1 : 0;
+  }
+  paint();
+}
+function fwd(){
+  const s = SECTIONS[idx];
+  if (s.stack && lay + 1 < LAYERS.length){ lay++; paint(); return; }
+  if (s.trace && tr + 1 < TRACE.length){ tr++; paint(); return; }
+  if (s.live && sim + 1 < DATA.steps.length){ sim++; paint(); return; }
+  if (idx === SECTIONS.length - 1){ seen = new Set([0]); go(0); return; }
+  go(idx + 1);
+}
+function back(){
+  const s = SECTIONS[idx];
+  if (s.stack && lay > 0){ lay--; paint(); return; }
+  if (s.trace && tr > 0){ tr--; paint(); return; }
+  if (s.live && sim > 0){ sim--; paint(); return; }
+  if (idx > 0) go(idx - 1, true);
+}
+$("fwd").onclick = fwd; $("back").onclick = back;
+document.addEventListener("keydown", e => {
+  if (e.code === "ArrowRight" || e.code === "Space" || e.code === "Enter"){ e.preventDefault(); fwd(); }
+  if (e.code === "ArrowLeft"){ e.preventDefault(); back(); }
+  if (e.code === "Home") go(0);
+  if (e.code === "End") go(SECTIONS.length - 1);
+});
+window.addEventListener("resize", () => paint());
+
+// #s=<id or number> opens a screen; &lay= &tr= &sim= open it part-way through.
+const HASH = new URLSearchParams(location.hash.slice(1));
+if (HASH.has("s")){
+  const byId = SECTIONS.findIndex(x => x.id === HASH.get("s"));
+  idx = Math.max(0, Math.min(SECTIONS.length-1, byId >= 0 ? byId : (parseInt(HASH.get("s"),10)||1)-1));
+  seen = new Set(Array.from({length: idx+1}, (_,k)=>k));
+}
+if (HASH.has("sim")) sim = Math.max(0, Math.min(DATA.steps.length-1, (parseInt(HASH.get("sim"),10)||1)-1));
+if (HASH.has("lay")) lay = Math.max(0, Math.min(LAYERS.length-1, (parseInt(HASH.get("lay"),10)||1)-1));
+if (HASH.has("tr"))  tr  = Math.max(0, Math.min(TRACE.length-1, (parseInt(HASH.get("tr"),10)||1)-1));
+paint();
+</script>
+</body>
+</html>
