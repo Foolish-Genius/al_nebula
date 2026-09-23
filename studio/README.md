@@ -21,7 +21,8 @@ python -m studio.server          # then open http://localhost:8765
 
 If a specification is out of reach the page says so: it names the **binding** specification, shows the
 closest value reached, and offers to relax it to an achievable number and retry. Ask for a 0.45 V eye
-and it will tell you the circuit tops out near 0.35 V at that corner.
+and it will name eye height as the binding constraint and show where the circuit actually tops out —
+around 0.34-0.39 V depending on the corner it drew.
 
 ## Live or replay
 
