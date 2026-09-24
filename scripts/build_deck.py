@@ -20,6 +20,8 @@ from pptx.util import Inches, Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 FIG = ROOT / "docs" / "report" / "figures"
+# Figures added for the 15 September review; see docs/figures/README.md.
+REVIEW_FIG = ROOT / "docs" / "figures"
 
 NAVY = RGBColor(0x16, 0x3A, 0x6B)
 BLUE = RGBColor(0x2B, 0x57, 0x97)
@@ -378,7 +380,7 @@ def build(team: str) -> Presentation:
         "The 7 dB case is the clearest illustration of the measurement question. That design reaches 7.09 dB by "
         "the maximum-minus-DC definition but only 6.72 dB measured at Nyquist, so our specification calls it a "
         "failure while the other definition would pass it."))
-    d.image(s, FIG / "peaking_overlay.png", Inches(0.45), Inches(1.35), width=Inches(8.2))
+    d.image(s, REVIEW_FIG / "peaking_overlay.png", Inches(0.45), Inches(1.35), width=Inches(8.2))
     d.bullets(s, [
         "Spec \u2265 3 dB: feasible at simulation 2; 5.38 dB at Nyquist, peak 2.88 GHz",
         "Spec \u2265 5 dB: feasible at simulation 3; 6.06 dB at Nyquist, peak 3.31 GHz",
@@ -396,7 +398,7 @@ def build(team: str) -> Presentation:
         "sequence rather than by the sampling phase used for this figure.\n\n"
         "The tap is about a tenth of its available range, which is the right answer for this channel: the "
         "post-cursor is small, so a larger tap would buy nothing."))
-    d.image(s, FIG / "dfe_before_after.png", Inches(0.4), Inches(1.5), width=Inches(12.5))
+    d.image(s, REVIEW_FIG / "dfe_before_after.png", Inches(0.4), Inches(1.5), width=Inches(12.5))
     d.text(s, "Tap +0.062, about a tenth of its range \u2014 the correct size for this channel's post-cursor",
            Inches(0.4), Inches(6.3), Inches(12.5), Inches(0.5), size=14, color=GREY, align=PP_ALIGN.CENTER)
 
@@ -409,7 +411,7 @@ def build(team: str) -> Presentation:
         "side of zero.\n\n"
         "The eye is now measured against the transmitted bits, bit errors are counted, and any error gives a zero "
         "eye. The levels are now an exact mirror."))
-    d.image(s, FIG / "dfe_levels.png", Inches(0.55), Inches(1.5), height=Inches(4.4))
+    d.image(s, REVIEW_FIG / "dfe_levels.png", Inches(0.55), Inches(1.5), height=Inches(4.4))
     d.table(s, [
         ["Bit and history", "Broken run, tap 0.5", "Fixed, tap +0.062"],
         ["+1 after +1", "\u2212376 mV  (wrong side)", "+222 mV"],
