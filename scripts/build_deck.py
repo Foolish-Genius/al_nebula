@@ -365,6 +365,61 @@ def build(team: str) -> Presentation:
     ], Inches(0.6), Inches(3.3), Inches(12.2), Inches(3.0), size=15)
     d.text(s, "Thank you", Inches(0.6), Inches(6.3), Inches(12.2), Inches(0.6), size=24, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
 
+    # ---------------------------------------------------------------- backup
+    # Not part of the five-minute narration: slides to jump to when the panel
+    # asks about the peaking definition or the DFE. They answer the reviewer
+    # feedback of 15 September directly.
+
+    s = d.slide("Backup: peaking across three specifications", "Q&A", notes=(
+        "Backup slide for questions on the peaking specification.\n\n"
+        "We rolled the trained policy out against peaking floors of 3, 5 and 7 dB at the TT corner. "
+        "It was trained only at 3 dB and responds correctly to the others: as the floor rises it trades DC gain "
+        "away, 11.8 down to 9.3 dB, and pushes the peak higher in frequency.\n\n"
+        "The 7 dB case is the clearest illustration of the measurement question. That design reaches 7.09 dB by "
+        "the maximum-minus-DC definition but only 6.72 dB measured at Nyquist, so our specification calls it a "
+        "failure while the other definition would pass it."))
+    d.image(s, FIG / "peaking_overlay.png", Inches(0.45), Inches(1.35), width=Inches(8.2))
+    d.bullets(s, [
+        "Spec \u2265 3 dB: feasible at simulation 2; 5.38 dB at Nyquist, peak 2.88 GHz",
+        "Spec \u2265 5 dB: feasible at simulation 3; 6.06 dB at Nyquist, peak 3.31 GHz",
+        "Spec \u2265 7 dB: not reached; 6.72 dB at Nyquist, but 7.09 dB max \u2212 DC",
+        "The policy was trained only at 3 dB",
+        "Peaking is enforced at Nyquist; max \u2212 DC is now reported alongside it",
+        "The 45-corner check now reads the run's own window, not a fixed 3\u201312 dB",
+    ], Inches(8.95), Inches(1.6), Inches(3.95), Inches(4.6), size=13)
+
+    s = d.slide("Backup: the waveform with and without the DFE", "Q&A", notes=(
+        "Backup slide for questions on the DFE.\n\n"
+        "Left: the eye as it leaves the CTLE, with the sampling instants marked. Right: the same samples after the "
+        "one-tap DFE correction, at the tap the policy chose, plus 0.062. The opening improves from about 324 to "
+        "346 millivolts. The validation record reports 324.5 to 355.5, measured against the transmitted bit "
+        "sequence rather than by the sampling phase used for this figure.\n\n"
+        "The tap is about a tenth of its available range, which is the right answer for this channel: the "
+        "post-cursor is small, so a larger tap would buy nothing."))
+    d.image(s, FIG / "dfe_before_after.png", Inches(0.4), Inches(1.5), width=Inches(12.5))
+    d.text(s, "Tap +0.062, about a tenth of its range \u2014 the correct size for this channel's post-cursor",
+           Inches(0.4), Inches(6.3), Inches(12.5), Inches(0.5), size=14, color=GREY, align=PP_ALIGN.CENTER)
+
+    s = d.slide("Backup: DFE output levels are symmetric", "Q&A", notes=(
+        "Backup slide for the review comment about a mismatch between the positive and negative swing.\n\n"
+        "That observation was correct, and it was a symptom of a real bug. In the earlier run the eye was labelled "
+        "using the DFE's own decisions, so a large tap separated the two groups by itself and the agent was "
+        "rewarded for driving the tap to its bound of 0.5. It reported a 0.70 volt eye while the receiver decided "
+        "54 of 127 bits wrongly, and the four output levels were badly mismatched, with half the bits on the wrong "
+        "side of zero.\n\n"
+        "The eye is now measured against the transmitted bits, bit errors are counted, and any error gives a zero "
+        "eye. The levels are now an exact mirror."))
+    d.image(s, FIG / "dfe_levels.png", Inches(0.55), Inches(1.5), height=Inches(4.4))
+    d.table(s, [
+        ["Bit and history", "Broken run, tap 0.5", "Fixed, tap +0.062"],
+        ["+1 after +1", "\u2212376 mV  (wrong side)", "+222 mV"],
+        ["+1 after \u22121", "+626 mV", "+271 mV"],
+        ["\u22121 after +1", "\u2212597 mV", "\u2212271 mV"],
+        ["\u22121 after \u22121", "+381 mV  (wrong side)", "\u2212222 mV"],
+    ], Inches(7.95), Inches(2.0), Inches(4.95), size=12)
+    d.text(s, "The reviewer spotted this before we had diagnosed it. Cause and fix are both in the report.",
+           Inches(7.95), Inches(5.0), Inches(4.95), Inches(0.8), size=13, color=GREY)
+
     return d.prs
 
 

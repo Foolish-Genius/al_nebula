@@ -238,7 +238,11 @@ def main() -> None:
         ac_result = evaluator.run_simulation(design)
         transient_result = evaluator.run_transient(design)
         linearity_result = evaluator.run_linearity(design)
-        pvt_results = evaluator.run_pvt(design, all_pvt_corners())
+        pvt_results = evaluator.run_pvt(
+            design, all_pvt_corners(),
+            peaking_min_db=specifications.peaking_min_db,
+            peaking_max_db=specifications.peaking_max_db,
+        )
         pvt_passed = sum(bool(row["pvt_pass"]) for row in pvt_results)
         summary["validation"] = {
             "dc_valid": ac_result["dc_valid"],
