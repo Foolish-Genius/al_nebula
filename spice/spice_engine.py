@@ -204,6 +204,9 @@ class SpiceEvaluator:
             "dc_gain": float("nan"),
             "nyquist_gain": float("nan"),
             "peaking_boost": float("nan"),
+            "peak_gain": float("nan"),
+            "peak_frequency_hz": float("nan"),
+            "peaking_max": float("nan"),
             "power": float("nan"),
             "error": None,
             "ac_frequency_hz": np.array([]),
@@ -266,11 +269,19 @@ class SpiceEvaluator:
                 ):
                     return failure
 
+                peak_gain, peak_frequency = self._peak_gain(frequencies, gains)
+
                 return {
                     "dc_valid": True,
                     "dc_gain": dc_gain,
                     "nyquist_gain": nyquist_gain,
                     "peaking_boost": nyquist_gain - dc_gain,
+                    # Reported alongside: peaking as maximum gain minus DC gain,
+                    # and where that maximum sits. The specification is enforced
+                    # on peaking_boost at Nyquist; these are for reporting.
+                    "peak_gain": peak_gain,
+                    "peak_frequency_hz": peak_frequency,
+                    "peaking_max": peak_gain - dc_gain,
                     "power": 1.2 * parameters["I_bias"],
                     "ac_frequency_hz": frequencies,
                     "ac_gain_db": gains,
@@ -301,6 +312,9 @@ class SpiceEvaluator:
             "dc_gain": float("nan"),
             "nyquist_gain": float("nan"),
             "peaking_boost": float("nan"),
+            "peak_gain": float("nan"),
+            "peak_frequency_hz": float("nan"),
+            "peaking_max": float("nan"),
             "power": float("nan"),
             "error": None,
         }
@@ -365,6 +379,7 @@ class SpiceEvaluator:
                 )
 
                 peaking_boost = nyquist_gain - dc_gain
+                peak_gain, peak_frequency = self._peak_gain(frequencies, gains)
 
                 if not (
                     np.isfinite(dc_gain)
@@ -380,6 +395,9 @@ class SpiceEvaluator:
                         "dc_gain": dc_gain,
                         "nyquist_gain": nyquist_gain,
                         "peaking_boost": peaking_boost,
+                        "peak_gain": peak_gain,
+                        "peak_frequency_hz": peak_frequency,
+                        "peaking_max": peak_gain - dc_gain,
                         "power": vdd * parameters["I_bias"],
                     }
                 )
@@ -400,8 +418,16 @@ class SpiceEvaluator:
         self,
         actions: np.ndarray,
         corners: tuple[Any, ...],
+        peaking_min_db: float = 3.0,
+        peaking_max_db: float = 12.0,
     ) -> list[dict[str, Any]]:
-        """Run all supplied PVT corners and return one row per corner."""
+        """Run all supplied PVT corners and return one row per corner.
+
+        ``peaking_min_db`` / ``peaking_max_db`` are the window a corner must land
+        in to pass; pass the values from the run's ``CtleSpecifications`` so a
+        retuned peaking target is enforced here too. The defaults reproduce the
+        original fixed 3-12 dB window.
+        """
 
         results: list[dict[str, Any]] = []
 
@@ -418,7 +444,7 @@ class SpiceEvaluator:
             pvt_pass = bool(
                 result["dc_valid"]
                 and np.isfinite(peaking)
-                and 3.0 <= peaking <= 12.0
+                and peaking_min_db <= peaking <= peaking_max_db
             )
 
             results.append(
@@ -431,6 +457,9 @@ class SpiceEvaluator:
                     "dc_gain": result["dc_gain"],
                     "nyquist_gain": result["nyquist_gain"],
                     "peaking_boost": peaking,
+                    "peak_gain": result.get("peak_gain"),
+                    "peak_frequency_hz": result.get("peak_frequency_hz"),
+                    "peaking_max": result.get("peaking_max"),
                     "power": result["power"],
                     "pvt_pass": pvt_pass,
                     "status": "pass" if pvt_pass else "fail",
@@ -1139,6 +1168,17 @@ class SpiceEvaluator:
                 )
             ),
         )
+
+    @staticmethod
+    def _peak_gain(frequencies: np.ndarray, gains: np.ndarray) -> tuple[float, float]:
+        """Return the maximum gain in the sweep and the frequency where it occurs."""
+        frequencies = np.asarray(frequencies, dtype=float)
+        gains = np.asarray(gains, dtype=float)
+        finite = np.isfinite(gains)
+        if gains.size == 0 or not finite.any():
+            return float("nan"), float("nan")
+        index = int(np.argmax(np.where(finite, gains, -np.inf)))
+        return float(gains[index]), float(frequencies[index])
 
     @staticmethod
     def _nearest_value(
