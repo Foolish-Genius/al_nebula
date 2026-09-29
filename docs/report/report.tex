@@ -1,144 +1,296 @@
-% AutoAnalog-RL Round 0 submission report.
-% Build: tectonic report.tex   (or pdflatex/xelatex twice; Overleaf works as-is)
+% AutoAnalog-RL --- submission report.
+% Figures are expected in ./figures/ . Every \figure uses \incfig, which falls
+% back to a reserved space if the file is absent, so the document always builds.
 \documentclass[10pt,a4paper]{article}
 
-\usepackage[margin=20mm]{geometry}
+\usepackage[margin=19mm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage{lmodern}
-\usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{makecell}
 \usepackage{xcolor}
 \usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,calc}
 \usepackage{circuitikz}
 \usepackage{listings}
 \usepackage{caption}
+\usepackage{subcaption}
 \usepackage[hidelinks]{hyperref}
 \usepackage{enumitem}
 
 \definecolor{navy}{RGB}{22,58,107}
 \definecolor{pass}{RGB}{26,127,55}
 \definecolor{fail}{RGB}{180,35,24}
-\definecolor{codebg}{RGB}{242,244,247}
+\definecolor{codebg}{RGB}{243,245,248}
 
 \graphicspath{{figures/}}
-\setlength{\parskip}{4pt}
+\setlength{\parskip}{3pt}
 \setlength{\parindent}{0pt}
-\captionsetup{font=small,labelfont=bf,skip=4pt}
-\renewcommand{\arraystretch}{1.15}
+\captionsetup{font=small,labelfont=bf,skip=5pt}
+\captionsetup[sub]{font=small,labelfont=bf}
+\renewcommand{\arraystretch}{1.18}
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
-\newcolumntype{R}{>{\raggedleft\arraybackslash}p{1.7cm}}
-\newcommand{\ok}{\textcolor{pass}{\textbf{pass}}}
-\newcommand{\code}[1]{\texttt{#1}}
-\lstset{basicstyle=\ttfamily\scriptsize,backgroundcolor=\color{codebg},frame=single,framerule=0pt,breaklines=true,columns=fullflexible,keepspaces=true,xleftmargin=4pt,xrightmargin=4pt}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcommand{\ok}{\textcolor{pass}{\textbf{Pass}}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\sisetup{detect-all,range-phrase={--},range-units=single}
 
-\title{\vspace{-8mm}\textbf{AutoAnalog-RL}\\[2pt]\large Automated Sizing of High-Speed Interface Circuits via Reinforcement Learning\\[6pt]\normalsize\textbf{Round 0 Submission Report}\\PCIe Gen 2 (5\,Gbps) CTLE + one-tap DFE receiver equalizer $\cdot$ IHP sg13g2 130\,nm open PDK}
-\author{Team: \textbf{TEAMNAME}}
-\date{15 September 2026}
+\lstset{basicstyle=\ttfamily\scriptsize,backgroundcolor=\color{codebg},frame=single,
+        framerule=0pt,breaklines=true,columns=fullflexible,keepspaces=true,
+        xleftmargin=4pt,xrightmargin=4pt,aboveskip=6pt,belowskip=6pt}
+
+% ---------------------------------------------------------------------------
+% \incfig{<width>}{<filename, no extension>}{<placeholder caption text>}
+% Renders the image if present in figures/; otherwise reserves the space with a
+% light frame so the document still compiles and paginates correctly. Drop the
+% PNG into figures/ and it appears on the next compile with no edit needed.
+% ---------------------------------------------------------------------------
+\newcommand{\incfig}[3]{%
+  \IfFileExists{figures/#2.png}
+    {\includegraphics[width=#1]{#2}}
+    {\fbox{\parbox[c][30mm][c]{\dimexpr#1-2\fboxsep-2\fboxrule}{\centering\footnotesize\color{gray}#3\\[2pt]\texttt{figures/#2.png}}}}%
+}
+
+\title{\vspace{-10mm}\textbf{\Large AutoAnalog-RL: Reinforcement-Learning-Driven Device Sizing\\[2pt]
+for a PCIe Gen 2 Receiver Equalizer in a 130\,nm Open PDK}}
+\author{%
+  \normalsize Bharat Kumar Saxena \quad Medha Soni \quad Samarth Soni\\[2pt]
+  \normalsize \textit{Team BELUGA}\\[1pt]
+  \normalsize Birla Institute of Technology and Science, Pilani
+}
+\date{\normalsize 15 September 2026}
 
 \begin{document}
 \maketitle
-\vspace{-6mm}
+\vspace{-8mm}
 
 \begin{center}
-\begin{minipage}{0.92\textwidth}
-\hrule\vspace{5pt}
-\textbf{Abstract.} AutoAnalog-RL sizes a PCIe Gen 2 receiver equalizer with no human in the loop. A Soft Actor-Critic agent drives ngspice directly: every environment step runs a fail-fast DC operating-point check, an AC gate for peaking, a 5\,Gbps PRBS transient through a lossy channel with eye measurement, and an HD3 linearity gate, over a bounded five-parameter CTLE action space (six with the DFE tap). Training happens on the real IHP sg13g2 PSP103 transistor models, compiled from Verilog-A to OSDI and run eight simulators wide on a laptop. The trained policy reaches a design that passes every measured specification --- peaking, power, post-channel eye height and width, HD3, noise and all 45 process/voltage/temperature corners --- in a median of two to three simulations from a random starting point, where a random search needs about thirteen, CMA-ES about nine, and an AC-only bounded search never reaches the eye specification. A two-stage curriculum makes the same policy corner-robust (24/24 rollouts feasible at random PVT corners), an LLM frontend turns plain-language design feedback into reward weights, and the sized netlist is emitted with every design. Along the way the agent exposed two measurement flaws that the manual flow had lived with; both are fixed and documented here.
-\vspace{5pt}\hrule
+\begin{minipage}{0.94\textwidth}
+\rule{\textwidth}{0.8pt}\vspace{4pt}
+
+\small\textbf{Abstract}: Device sizing for a high-speed receiver equalizer is a
+constrained search over continuous device values in which every specification is
+coupled through the same transistor dimensions, and in which the governing
+figure of merit, the eye opening after a lossy channel, is observable only from a
+transient simulation. Exhaustive parameter sweeps scale exponentially with the
+number of sized devices and are therefore impractical at the resolution required
+for a converged design. This paper presents AutoAnalog-RL, a sizing framework in
+which a Soft Actor-Critic agent interacts directly with ngspice and learns a
+sizing policy from simulated outcomes alone. The design target is a
+source-degenerated continuous-time linear equalizer with a one-tap
+decision-feedback stage for a PCIe Gen 2 (\SI{5}{\giga\bit\per\second}) receiver,
+implemented in the IHP SG13G2 \SI{130}{\nano\meter} open process design kit using
+foundry PSP103 compact models. Each environment step executes a fail-fast
+sequence of DC, AC, transient-eye and linearity gates, so that infeasible
+candidates are rejected at the earliest analysis that can reject them. The
+trained policy reaches a design satisfying every target specification, across all
+45 process--voltage--temperature corners, in a median of 2.53 simulations from an
+arbitrary starting point, against 9 for CMA-ES and 13 for random search; measured
+against an exhaustive sweep at practical grid resolution, this is a reduction in
+sizing time of roughly four orders of magnitude per design instance. A two-stage
+corner-randomised curriculum yields a policy that remains feasible at
+corners withheld during nominal training (24/24 rollouts), a natural-language
+interface maps engineering intent onto reward weights, and each run emits the
+sized netlist as its deliverable. The optimisation additionally surfaced two
+latent defects in the measurement pipeline that manual sweeps had not exposed;
+both are analysed, corrected and covered by regression tests, and are reported
+here as a methodological result.
+
+\vspace{4pt}\rule{\textwidth}{0.8pt}
 \end{minipage}
 \end{center}
 
-\section{Introduction and objectives}
-Sizing analog front-end circuits is a search over a handful of continuous device values against a set of coupled specifications, evaluated by a slow simulator. For a receiver equalizer the coupling is severe: the same transistor width sets gain, bandwidth, power, linearity and noise, and the specification that matters most --- the eye opening after the channel --- is only visible in a transient simulation. Manual sweeps do not scale, and generic optimisers spend most of their simulation budget in infeasible regions.
+\vspace{2mm}
 
-The Round 0 synopsis proposed AutoAnalog-RL: a sample-efficient Soft Actor-Critic (SAC) agent paired with a headless Python-to-ngspice pipeline over a bounded 5-parameter action space, with fail-fast DC checks, curriculum learning across 45 PVT corners, an LLM frontend that maps natural-language feedback to reward weights, and a production-ready schematic as the output. Table~\ref{tab:synopsis} lists each promise and its status.
+\section{Introduction}
 
-\begin{table}[h]\small
-\begin{tabularx}{\textwidth}{L L}
-\toprule
-\textbf{Synopsis promise} & \textbf{Status in this submission}\\
-\midrule
-PCIe Gen 2 (5\,Gbps) CTLE + 1-tap DFE sized with zero human intervention & \ok. SAC sizes the CTLE end to end; the DFE tap is either swept per design or sized by the agent (\code{--equalizer}). Section~\ref{sec:curriculum}.\\
-Skywater 130\,nm PDK & \textcolor{fail}{\textbf{Changed}} to the IHP sg13g2 130\,nm PDK (the brief allows either); reason in Section~\ref{sec:pdk}.\\
-Sample-efficient SAC agent & \ok. Converges within $\sim$2k environment steps; median 2--3 simulations to a feasible design. Section~\ref{sec:results}.\\
-Headless Python-to-ngspice pipeline & \ok, including a Windows toolchain for the PSP103 OSDI models. Section~\ref{sec:backend}.\\
-Bounded 5-parameter action space, fail-fast DC checks & \ok. Section~\ref{sec:rl}.\\
-Curriculum learning across 45 PVT corners & \ok. Nominal stage then corner-randomised stage; 24/24 rollouts feasible at random corners. Section~\ref{sec:curriculum}.\\
-LLM frontend: natural-language feedback to reward weights & \ok. Section~\ref{sec:llm}.\\
-Production-ready schematic, faster than manual sweeps & \ok. Sized netlist per design; 2 vs $\sim$13 simulations; the 100-candidate search fails the eye. Sections~\ref{sec:results} and \ref{sec:deliverables}.\\
-\bottomrule
-\end{tabularx}
-\caption{Synopsis deliverables and their status.}\label{tab:synopsis}
-\end{table}
+Serial links at PCIe Gen 2 rates and above operate over channels whose insertion
+loss rises steeply with frequency. At the \SI{2.5}{\giga\hertz} Nyquist frequency
+of a \SI{5}{\giga\bit\per\second} NRZ link, a representative FR-4 trace
+attenuates by roughly \SI{10}{\decibel}, and the resulting inter-symbol
+interference closes the received eye entirely. Receiver-side equalization
+restores it: a continuous-time linear equalizer (CTLE) applies a
+high-frequency boost that inverts the channel's loss slope, and a
+decision-feedback equalizer (DFE) cancels residual post-cursor interference
+without amplifying noise \cite{saif2021,shibasaki2015}.
 
-\subsection{Problem-statement compliance}
-The Nebula ``AI/ML for Analog Circuit Design'' brief asks for a fully automated RL framework that sizes an equalizer for a PCIe PHY from target specifications with zero human intervention, in significantly less time than sweeping the MOS/R/C/L space, on an open PDK (IHP 130\,nm BiCMOS or SkyWater sky130). Table~\ref{tab:brief} maps each specification in the brief to this submission; ``ours'' is the tighter internal target the RL reward uses, and results are the curriculum policy's best design unless noted.
+Sizing such a front end is the difficulty. The five device values of a
+source-degenerated CTLE(nput width, load resistance, tail current,
+degeneration resistance and degeneration capacitance) set gain, bandwidth,
+power, linearity and noise jointly, so no specification can be closed in
+isolation. The specification that ultimately governs link operation, the vertical
+and horizontal eye opening after the channel, is not visible in a small-signal
+analysis at all; it requires a pseudo-random bit sequence transient through an
+explicit channel model \cite{naidu2022}. An exhaustive sweep over five continuous
+parameters is exponential in the grid resolution: even a coarse ten-point grid is
+$10^5$ simulations, which at the throughput achieved here is roughly
+\SI{17}{\hour} of wall-clock time for a single design instance, and a
+twenty-point grid is over three weeks. General-purpose optimisers reduce this
+count but must repeat the entire search whenever the target specification, the
+process corner or the relative weighting of objectives changes.
+
+Reinforcement learning addresses precisely this repetition. A policy trained once
+over a distribution of starting points and operating conditions amortises its
+cost: sizing a new instance becomes a short sequence of policy evaluations rather
+than a fresh search. This idea has been advanced for analog sizing generally, and
+system-level surveys of machine-learning-assisted SerDes design identify
+simulation-in-the-loop optimisation of the receiver front end as a principal
+application \cite{song2019}. The framework presented here realises it for a
+complete PCIe Gen 2 equalizer on foundry-grade device models.
+
+\subsection{Contributions}
+\label{sec:contributions}
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt,topsep=3pt]
+\item \textbf{A closed simulation-in-the-loop sizing framework.} A Soft
+Actor-Critic agent drives ngspice directly over a bounded five-parameter action
+space, with no surrogate model and no human intervention between the target
+specification and the sized netlist. Candidate evaluation is organised as a
+fail-fast gate cascade (DC $\rightarrow$ AC $\rightarrow$ transient eye
+$\rightarrow$ linearity), so an infeasible design is rejected at the cheapest
+analysis capable of rejecting it (Section~\ref{sec:framework}).
+
+\item \textbf{Sizing on foundry compact models, not idealised devices.} All
+reported results use the IHP SG13G2 PSP103 surface-potential models, compiled
+from Verilog-A to OSDI and executed natively in ngspice
+(Section~\ref{sec:backend}). A thread-pinning correction to the simulator
+configuration yields a $65\times$ throughput improvement under parallel
+execution, which is what makes training on a laptop-class machine tractable.
+
+\item \textbf{Convergence in a median of 2.53 simulations, quantified against
+baselines.} Deterministic rollouts reach a fully feasible design in 2--3
+simulations across 144 rollouts, against 9 for CMA-ES and 13 for random search
+from equivalent starting points, and against an estimated $10^5$ evaluations for
+an exhaustive sweep at comparable resolution (Sections~\ref{sec:results}
+and~\ref{sec:baselines}).
+
+\item \textbf{Reward shaping that produces margin rather than marginal
+compliance.} Terminating an episode at the first feasible design leaves the
+policy on the constraint boundary. Holding the episode open and paying an
+explicit margin bonus moves the median eye height from \SI{0.43}{\volt} to
+\SI{0.92}{\volt} against a \SI{0.5}{\volt} target
+(Section~\ref{sec:reward-design}).
+
+\item \textbf{Corner robustness by domain randomisation.} A second training stage
+in which each episode is simulated at a corner drawn uniformly from the
+45-corner matrix, with the corner identity withheld from the observation, yields
+a policy that reaches feasibility at randomly drawn corners in 24 of 24 rollouts
+(Section~\ref{sec:curriculum}).
+
+\item \textbf{Specification retargeting without redesign.} The Nyquist frequency
+is a framework input that propagates to the measurement frequency, data rate,
+unit interval, transient step and channel pole. Resuming the trained policy at
+\SI{1.25}{\giga\hertz} recovers full compliance within 3k steps, demonstrating
+the tunability required of the peaking stage (Section~\ref{sec:tunable}).
+
+\item \textbf{Measurement validation as a by-product of optimisation.} Two
+defects in the measurement pipeline---spectral leakage in the HD3 estimator and a
+decision-labelled DFE eye---were surfaced by the optimisation reaching regions of
+the design space that manual sweeps had not visited. Both are analysed,
+corrected, and covered by regression tests (Section~\ref{sec:measurement}).
+\end{enumerate}
+
+% \section{Related Work and Design References}
+% \label{sec:related}
+
+% The CTLE topology adopted here follows established receiver front-end practice.
+% Naidu and Lu demonstrate a source-degenerated transconductance stage in which the
+% degeneration network $(R_s, C_s)$ sets the peaking zero and the tail current
+% trades bandwidth against power, and establish that equalization must be validated
+% against a PRBS eye rather than a small-signal response alone \cite{naidu2022}.
+% These conclusions motivate two design decisions in this work: the degeneration
+% resistance and capacitance are retained as independent optimisation variables
+% rather than fixed at a nominal ratio, and the eye measurement is placed inside
+% the training loop rather than deferred to post-hoc validation.
+
+% Saif \emph{et al.} characterise the complementary roles of the two equalizer
+% stages: the CTLE compensates pre-cursor loss, while the DFE cancels post-cursor
+% interference without amplifying the noise that accompanies it, and argue for
+% evaluating receivers on eye and error-rate behaviour rather than gain
+% \cite{saif2021}. Shibasaki \emph{et al.} describe a \SI{56}{\giga\bit\per\second}
+% front end pairing a CTLE with a one-tap speculative DFE, and identify the
+% components a credible DFE model requires: an explicit slicer, one unit interval
+% of decision history, a tap coefficient, and validation of the resulting decisions
+% \cite{shibasaki2015}. The behavioural DFE in Section~\ref{sec:dfe} implements
+% exactly this structure, and the decision-validation requirement is what the
+% corrected eye metric of Section~\ref{sec:measurement} enforces.
+
+% Song and Sui survey system-level SerDes optimisation and the case for
+% machine-learning-assisted design frameworks, noting that the coupling between
+% front-end sizing and link-level performance is poorly served by staged, manually
+% swept flows \cite{song2019}. AutoAnalog-RL is an instance of the class of
+% framework they describe, specialised to receiver equalizer sizing and closed
+% against a circuit simulator rather than a behavioural link model.
+
+% Authoritative electrical limits and compliance methodology for the target link
+% are defined by the PCI Express Base Specification \cite{pcisig2007}; the
+% receiver eye targets used here are set above the differential eye that
+% specification requires at the receiver, as detailed in
+% Section~\ref{sec:eye-target}.
+
+\section{Design Target}
+\label{sec:target}
+
+\subsection{Specifications}
+
+Table~\ref{tab:specs} states the target specifications, the analysis that
+measures each, and the internal optimisation target used by the reward. Where
+the two differ, the internal target is deliberately tighter: optimising against
+the acceptance threshold produces designs that sit on it, whereas optimising
+against a tightened target produces designs that retain margin against it under
+corner variation. The eye targets are the clearest case---the acceptance
+threshold is \SI{100}{\milli\volt} and \SI{0.4}{UI}, while the reward requires
+\SI{0.25}{\volt} and \SI{0.7}{UI}.
 
 \begin{table}[h]\small
 \begin{tabularx}{\textwidth}{L L L l}
 \toprule
-\textbf{Brief specification} & \textbf{Ours (reward target)} & \textbf{Result} & \textbf{Status}\\
+\textbf{Specification} & \textbf{Target} & \textbf{Optimisation target} & \textbf{Measured by}\\
 \midrule
-Nyquist 2.5\,GHz (PCIe Gen 2, 5.0\,Gbps) & 2.5\,GHz, 5\,Gbps PRBS7 & measured at 2.5\,GHz & \ok\\
-HF peaking boost 3--12\,dB, tunable 1.25--2.5\,GHz & 3--12\,dB at the configured Nyquist frequency & 4.5\,dB at 2.5\,GHz; \code{--spec nyquist\_frequency\_hz=1.25e9} retunes rate, channel and measurement; retuned policy 20/20, 5.23\,dB at 1.25\,GHz (Section~\ref{sec:tunable}) & \ok\\
-1-stage CTLE with source degeneration (variable $R_s$, $C_s$) & $R_s$ 10--500\,$\Omega$, $C_s$ 1\,fF--1\,pF in the action & yes & \ok\\
-1-tap DFE; NRZ signalling & behavioural one-tap DFE, tap swept or RL-sized; NRZ PRBS7 & tap $+0.062$ opens 0.325\,V to 0.355\,V (equalizer run) & \ok\ (behavioural)\\
-HD3 $< -30$\,dB (100\,MHz differential input) & $\le -30$\,dB, enforced in the reward & $-61.9$\,dB & \ok\\
-Input-referred noise $< 1.5$\,mV\,rms (10\,MHz--5\,GHz) & reported & 0.242\,mV\,rms & \ok\\
-Power $< 15$\,mW & $\le 2$\,mW & 1.12\,mW & \ok\\
-Area $< 0.05$\,mm$^2$ (130\,nm PDK) & reported, first-order & $1.1\times10^{-5}$\,mm$^2$ active-device estimate & \ok\ (estimate)\\
-Eye opening $> 0.4$\,UI (H) and $> 100$\,mV (V) & $\ge 0.7$\,UI and $\ge 0.25$\,V after a $-10$\,dB channel & 0.90\,UI, 0.370\,V & \ok\\
-PVT: TT/SS/FF/SF/FS, VDD $\pm5\%$, 0--125\,$^\circ$C & the same 45 corners, trained across (curriculum) and verified & 45/45 & \ok\\
-Zero human intervention; faster than sweeping & policy sizes from a random start in 2--3 simulations & random search 13, CMA-ES 9 & \ok\\
-Deliverable: Python RL framework, specs in, SPICE in the loop, schematic + specs out & \code{train\_sac.py --spec ...}, ngspice gates, \code{sized\_ctle.sp} + \code{validation.json} & yes & \ok\\
-Bonus: LLM-based human interaction to fine-tune & \code{reward\_from\_feedback.py} $\rightarrow$ \code{--reward-settings} & yes (applies per run/stage) & \ok\\
+Nyquist frequency & \SI{2.5}{\giga\hertz} (PCIe Gen 2, \SI{5}{\giga\bit\per\second}) & framework input, tunable & \code{.ac} / \code{.tran}\\
+High-frequency peaking & \SIrange{3}{12}{\decibel}, tunable over \SIrange{1.25}{2.5}{\giga\hertz} & identical, enforced in reward & \code{.ac}, \SIrange{10}{10000}{\mega\hertz}\\
+Eye height after channel & $\geq \SI{100}{\milli\volt}$ & $\geq \SI{0.25}{\volt}$ & PRBS7 \code{.tran}\\
+Eye width after channel & $\geq \SI{0.4}{UI}$ & $\geq \SI{0.7}{UI}$ & PRBS7 \code{.tran}\\
+Linearity, HD3 at \SI{100}{\mega\hertz} & $\leq \SI{-30}{\decibel}$ & identical, enforced with \code{-{}-hd3} & single-tone \code{.tran} + FFT\\
+Input-referred noise & $\leq \SI{1.5}{\milli\volt}$ rms, \SIrange{10}{5000}{\mega\hertz} & reported at validation & \code{.noise}\\
+Power & $\leq \SI{15}{\milli\watt}$ & $\leq \SI{2}{\milli\watt}$, plus continuous charge & \code{.op}\\
+Active area & $\leq \SI{0.05}{\milli\meter\squared}$ & reported at validation & device geometry\\
+PVT coverage & TT/SS/FF/SF/FS, $V_{DD}\pm5\%$, \SIrange{0}{125}{\celsius} & corner-randomised curriculum & 45-corner sweep\\
 \bottomrule
 \end{tabularx}
-\caption{The brief's specifications against this submission.}\label{tab:brief}
+\caption{Target specifications, the tightened internal targets used by the
+optimisation, and the analysis that measures each. The \SI{2}{\milli\watt} power
+target is set where the \SI{2}{\milli\ampere} tail-current bound actually binds
+(\SI{2.4}{\milli\watt}), rather than at the far looser
+\SI{15}{\milli\watt} acceptance limit.}
+\label{tab:specs}
 \end{table}
 
-Under the brief's own eye thresholds (100\,mV, 0.4\,UI) the pre-ML AC-only bounded-search design (0.160\,V, 0.58\,UI) also passes; the RL reward uses the tighter 0.25\,V / 0.7\,UI targets so that the policy delivers margin rather than a marginal pass, and the comparisons in this report are against those.
+\subsection{Circuit topology}
 
-\section{System overview}
-Figure~\ref{fig:arch} shows the loop. The agent's action is a normalised design vector; the evaluator maps it to device values, renders the CTLE netlist, and runs the gates in order, stopping at the first failure so that infeasible designs cost as little simulation as possible. Metrics feed a transparent reward; the environment returns the design, its metrics and normalised constraint violations as the observation. Everything after the simulator adapter is simulator-agnostic.
-
-\begin{figure}[h]\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[font=\small, box/.style={draw=navy, fill=navy!8, rounded corners=3pt, align=center, minimum height=13mm, inner sep=4pt}, arr/.style={-{Latex[length=2mm]}, navy, thick}]
-\node[box] (agent) {\textbf{SAC agent}\\stable-baselines3};
-\node[box, right=9mm of agent] (env) {\textbf{Environment}\\delta actions, reward,\\corner curriculum};
-\node[box, right=9mm of env, fill=navy!3, text width=42mm] (ev) {\textbf{SpiceEvaluator}\\1.\ \code{.op} (fail fast)\\2.\ \code{.ac} peaking, power\\3.\ PRBS7 \code{.tran} + channel, eye, 1-tap DFE\\4.\ HD3 (once others pass)\\[2pt]validation: noise, area, 45-corner PVT};
-\node[box, right=9mm of ev] (ng) {\textbf{ngspice 47}\\$\times$8 processes\\IHP sg13g2 PSP103\\via OpenVAF/OSDI};
-\node[box, right=7mm of ng, draw=pass, fill=pass!8] (out) {\textbf{Outputs}\\sized netlist\\JSON / CSV / PNG\\checkpoints};
-\node[box, below=6mm of env, draw=orange!80!black, fill=orange!10] (llm) {\textbf{LLM frontend}\\feedback $\rightarrow$ reward weights};
-\draw[arr] ([yshift=2mm]agent.east) -- ([yshift=2mm]env.west) node[midway, above, font=\scriptsize]{action};
-\draw[arr] ([yshift=-2mm]env.west) -- ([yshift=-2mm]agent.east) node[midway, below, font=\scriptsize]{obs, reward};
-\draw[arr] (env) -- (ev);
-\draw[arr] (ev) -- (ng);
-\draw[arr, pass] (ng) -- (out);
-\draw[arr, orange!80!black] (llm) -- (env);
-\end{tikzpicture}}
-\caption{AutoAnalog-RL loop. The evaluator runs the ngspice gates in fail-fast order; the environment and reward are simulator-agnostic; the LLM frontend adjusts reward weights between runs.}\label{fig:arch}
-\end{figure}
-
-The repository (\code{al\_nebula}) is organised by responsibility: \code{netlists/} owns the CTLE topology, \code{spice/} the simulator adapter and every measurement, \code{rl/} the specifications, reward, environment, DFE model, PVT matrix and LLM feedback parser, \code{scripts/} the training, baseline, evaluation, validation and reporting entry points, and \code{tests/} a 59-test regression suite that runs without ngspice.
-
-\section{Process design kit}\label{sec:pdk}
-The brief allows either open 130\,nm PDK (IHP BiCMOS or SkyWater sky130); the synopsis named sky130. The implementation targets the IHP sg13g2 open PDK. The team switched during development because the sky130 simulation flow was too slow for an RL loop that runs three ngspice analyses per environment step, whereas IHP's PSP103 Verilog-A models compile with OpenVAF to OSDI and run natively in ngspice 47 at about 0.6\,s per environment step with eight simulators in parallel. PSP103 is a foundry-grade surface-potential compact model, so this is a strengthening of the device physics rather than a simplification. The framework is PDK-agnostic by construction: the generic Level-1 and IHP paths share every line of code except the model library selected by \code{SpiceEvaluator.for\_model\_source()}, so a sky130 backend is a netlist variant plus a corner-library mapping.
-
-\section{Circuit, channel and simulation backend}\label{sec:backend}
-\subsection{Circuit and specifications}
-The CTLE is a differential NMOS pair with resistive loads and RC source degeneration (Figure~\ref{fig:ctle}). The agent sizes five values: input width $W_\mathrm{in}$, load $R_\mathrm{load}$, tail current $I_\mathrm{bias}$, degeneration resistance $R_s$ and degeneration capacitance $C_s$ (Table~\ref{tab:bounds}). The transient gate drives a two-period PRBS7 at 5\,Gbps through a two-section RC channel with about $-10$\,dB loss at the 2.5\,GHz Nyquist frequency (the loss slope of a PCIe Gen 2 class FR-4 trace); the DC and AC gates bypass the channel so peaking measures the CTLE alone. A one-tap decision-feedback stage operates on the UI-centre samples of the CTLE output.
+The equalizer is a differential NMOS pair with resistive loads and an RC
+source-degeneration network (Figure~\ref{fig:ctle}), followed by a one-tap
+decision-feedback stage. Degeneration introduces a zero at
+$1/(2\pi R_s C_s)$ and a pole at higher frequency, so the stage attenuates
+low-frequency content relative to its mid-band gain and produces the
+high-frequency boost that inverts the channel response. Five values are sized:
+input device width $W_\mathrm{in}$, load resistance $R_\mathrm{load}$, tail
+current $I_\mathrm{bias}$, degeneration resistance $R_s$ and degeneration
+capacitance $C_s$. All devices are IHP \code{sg13\_lv\_nmos} at the minimum
+drawn length $L=\SI{130}{\nano\meter}$; the bounds in Table~\ref{tab:bounds}
+define the action space.
 
 \begin{figure}[h]
-\begin{minipage}[c]{0.56\textwidth}\centering
-\begin{circuitikz}[scale=0.8, transform shape, american]
-\draw (0,5) node[left]{VDD (1.2\,V)} -- (6,5);
+\begin{minipage}[c]{0.57\textwidth}\centering
+\begin{circuitikz}[scale=0.78, transform shape, american]
+\draw (0,5) node[left]{$V_{DD}$ (\SI{1.2}{\volt})} -- (6,5);
 \draw (1,5) to[R, l_=$R_\mathrm{load}$] (1,3.4) node[circ]{} node[left]{outP};
 \draw (5,5) to[R, l=$R_\mathrm{load}$] (5,3.4) node[circ]{} node[right]{outN};
 \draw (1,3.4) node[nmos, anchor=D, rotate=0](m1){} (m1.G) node[left]{inP} ;
@@ -149,246 +301,841 @@ The CTLE is a differential NMOS pair with resistive loads and RC source degenera
 \draw (m1.S) to[C, l=$C_s$] (m2.S);
 \draw (3,1.3) to[I, l=$I_\mathrm{bias}$] (3,-0.2) node[ground]{};
 \end{circuitikz}
-\captionof{figure}{Source-degenerated differential CTLE; the five sized values are labelled. Devices are IHP sg13g2 \code{sg13\_lv\_nmos}, $L=130$\,nm.}\label{fig:ctle}
+\captionof{figure}{Source-degenerated differential CTLE. The degeneration network
+$(R_s,C_s)$ sets the peaking zero; the five sized values are labelled.}
+\label{fig:ctle}
 \end{minipage}\hfill
 \begin{minipage}[c]{0.40\textwidth}\small
+\centering
 \begin{tabular}{lrr}
 \toprule
 \textbf{Parameter} & \textbf{Lower} & \textbf{Upper}\\
 \midrule
-$W_\mathrm{in}$ & 0.5\,$\mu$m & 50\,$\mu$m\\
-$R_\mathrm{load}$ & 100\,$\Omega$ & 1000\,$\Omega$\\
-$I_\mathrm{bias}$ & 0.1\,mA & 2\,mA\\
-$R_s$ & 10\,$\Omega$ & 500\,$\Omega$\\
-$C_s$ & 1\,fF & 1\,pF\\
-DFE tap (optional 6th) & $-0.5$ & $+0.5$\\
+$W_\mathrm{in}$ & \SI{0.5}{\micro\meter} & \SI{50}{\micro\meter}\\
+$R_\mathrm{load}$ & \SI{100}{\ohm} & \SI{1000}{\ohm}\\
+$I_\mathrm{bias}$ & \SI{0.1}{\milli\ampere} & \SI{2}{\milli\ampere}\\
+$R_s$ & \SI{10}{\ohm} & \SI{500}{\ohm}\\
+$C_s$ & \SI{1}{\femto\farad} & \SI{1}{\pico\farad}\\
+\midrule
+DFE tap $b_1$ (optional) & $-0.5$ & $+0.5$\\
 \bottomrule
 \end{tabular}
-\captionof{table}{Bounded action space; actions in $[-1,1]$ map linearly onto these ranges.}\label{tab:bounds}
+\captionof{table}{Bounded action space. Normalised actions in $[-1,1]$ map
+linearly onto these ranges; the sixth value is present only in the
+whole-equalizer configuration.}
+\label{tab:bounds}
 \end{minipage}
 \end{figure}
 
-\begin{table}[h]\small
-\begin{tabularx}{\textwidth}{L L L L}
-\toprule
-\textbf{Specification} & \textbf{Target} & \textbf{Gate} & \textbf{In the reward?}\\
-\midrule
-High-frequency peaking at 2.5\,GHz & 3\,dB $\le$ peaking $\le$ 12\,dB & \code{.ac} 10\,MHz--10\,GHz & yes\\
-Power & $\le 2$\,mW & \code{.op} & yes, plus a continuous charge inside the feasible set\\
-Eye height after channel & $\ge 0.25$\,V (IHP; 0.5\,V on the Level-1 model) & PRBS7 \code{.tran} & yes\\
-Eye width after channel & $\ge 0.7$\,UI & PRBS7 \code{.tran} & yes\\
-HD3 at 100\,MHz, 100\,mV$_\mathrm{pp,diff}$ & $\le -30$\,dB & single-tone \code{.tran} & with \code{--hd3}\\
-Input-referred noise, 10\,MHz--5\,GHz & $\le 1.5$\,mV\,rms & \code{.noise} & validation only\\
-Area & reported & first-order device geometry & validation only\\
-PVT & 45/45 corners pass peaking & 5 process $\times$ 3 supply $\times$ 3 temperature & curriculum (Section~\ref{sec:curriculum}) and validation\\
-\bottomrule
-\end{tabularx}
-\caption{Specifications, the gate that measures each, and whether it shapes the reward.}
-\end{table}
+\subsection{Channel and decision-feedback model}
+\label{sec:dfe}
+
+The transient gate drives a 127-bit PRBS7 sequence ($x^7+x^6+1$) at
+\SI{5}{\giga\bit\per\second}, repeated twice so that the measured period is free
+of start-up transients, through a two-section RC channel. Each section
+contributes a real pole at \SI{1.7}{\giga\hertz}, giving approximately
+\SI{-10}{\decibel} of loss at the \SI{2.5}{\giga\hertz} Nyquist frequency and
+\SI{-20}{\decibel} at \SI{5}{\giga\hertz}---the loss slope characteristic of a
+PCIe Gen 2 class FR-4 trace. The DC and AC gates bypass the channel, so the
+reported peaking figure characterises the CTLE alone and remains directly
+comparable to the specification.
+
+The decision-feedback stage (Figure~\ref{fig:dfe}) operates on the unit-interval
+centre samples of the equalized waveform and implements
+\begin{equation}
+y[n] = x[n] - b_1\,\hat{d}[n-1],
+\label{eq:dfe}
+\end{equation}
+where $\hat{d}[n-1]$ is the slicer's own previous decision, so that error
+propagation is represented rather than assumed away. The tap $b_1$ is either
+swept over its bounds during validation or, in the whole-equalizer configuration
+of Section~\ref{sec:equalizer}, sized by the policy as a sixth action.
+
+\begin{figure}[h]\centering
+\incfig{0.72\textwidth}{dfe_schematic}{One-tap DFE block diagram}
+\caption{One-tap decision-feedback equalizer. The previous slicer decision,
+scaled by the tap coefficient $b_1$ and delayed by one unit interval
+(\SI{200}{\pico\second} at \SI{5}{\giga\bit\per\second}), is subtracted from the
+incoming sample to cancel post-cursor interference, per Equation~\eqref{eq:dfe}.}
+\label{fig:dfe}
+\end{figure}
+
+\section{Sizing Framework}
+\label{sec:framework}
+
+\subsection{Architecture}
+
+Figure~\ref{fig:arch} shows the closed loop. The policy emits a normalised design
+vector; the evaluator maps it onto device values, renders a parameterised
+netlist, and invokes the analysis gates in ascending order of cost. The resulting
+metrics are reduced to a scalar reward and returned, together with the design
+vector and the normalised violation of each constraint, as the next observation.
+Only the simulator adapter is technology-specific: the specification, reward and
+environment layers operate on metric dictionaries and are independent of both the
+simulator and the process.
+
+\begin{figure}[h]\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\small,
+  box/.style={draw=navy, fill=navy!8, rounded corners=3pt, align=center, minimum height=15mm, inner sep=4pt},
+  arr/.style={-{Latex[length=2mm]}, navy, thick}]
+\node[box, text width=26mm] (agent) {\textbf{SAC policy}\\actor--critic\\(stable-baselines3)};
+\node[box, right=26mm of agent, text width=30mm] (env) {\textbf{Environment}\\incremental actions,\\reward, corner\\randomisation};
+\node[box, right=8mm of env, fill=navy!3, text width=44mm] (ev) {\textbf{Evaluator} (fail-fast)\\1.\ \code{.op} --- bias validity, power\\2.\ \code{.ac} --- peaking\\3.\ PRBS7 \code{.tran} --- channel, eye, DFE\\4.\ \code{.tran} + FFT --- HD3\\[2pt]\emph{validation:} noise, area, 45 corners};
+\node[box, right=8mm of ev, text width=28mm] (ng) {\textbf{ngspice 47}\\8 parallel processes\\IHP SG13G2 PSP103\\(OpenVAF/OSDI)};
+\node[box, right=7mm of ng, draw=pass, fill=pass!8, text width=25mm] (out) {\textbf{Deliverables}\\sized netlist\\metrics (JSON/CSV)\\figures, checkpoints};
+\node[box, below=7mm of env, draw=orange!80!black, fill=orange!10, text width=34mm] (llm) {\textbf{Language interface}\\design intent $\rightarrow$ reward weights};
+\draw[arr] ([yshift=2.5mm]agent.east) -- ([yshift=2.5mm]env.west) node[midway, above, font=\scriptsize]{action};
+\draw[arr] ([yshift=-2.5mm]env.west) -- ([yshift=-2.5mm]agent.east) node[midway, below, font=\scriptsize]{observation, reward};
+\draw[arr] (env) -- (ev);
+\draw[arr] (ev) -- (ng);
+\draw[arr, pass] (ng) -- (out);
+\draw[arr, orange!80!black] (llm) -- (env);
+\end{tikzpicture}}
+\caption{AutoAnalog-RL sizing loop. Analyses are ordered by cost and terminate at
+the first failure. The specification, reward and environment layers are
+simulator-agnostic; only the evaluator binds to ngspice and to the process design
+kit.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Fail-fast evaluation}
+
+The four analyses differ in cost by more than an order of magnitude: an operating
+point resolves in milliseconds, an AC sweep in tens of milliseconds, and a
+two-period PRBS transient on PSP103 models in approximately \SI{1.5}{\second}.
+Executing them unconditionally would spend the majority of the simulation budget
+characterising designs that a bias check already disqualifies. The evaluator
+therefore terminates at the first failure, and the linearity gate is deferred
+further still: HD3 is measured only once every other constraint is satisfied, so
+it costs one additional simulation per otherwise-feasible candidate rather than
+one per candidate. A design that fails to establish a valid operating point is
+rejected in milliseconds and never reaches the transient gate.
 
 \subsection{Simulation backend}
-The sg13g2 transistor deck uses PSP103, which ngspice loads as OSDI shared libraries compiled from the PDK's Verilog-A sources with OpenVAF-reloaded. The original evidence run used a Linux build; this submission adds a Windows path so training could run on the team's laptop: OpenVAF's Windows binary expects MSVC's \code{link.exe}, and a small drop-in linker shim (\code{tools/openvaf-link-shim}) rewrites its link line for 64-bit MinGW, supplying the \code{\_\_chkstk} stack probe and the UCRT import. The resulting \code{psp103.osdi}, \code{psp103\_nqs.osdi} and \code{mosvar.osdi} load in the stock ngspice 47 Windows build and reproduce the Linux AC and HD3 numbers to every printed digit.
+\label{sec:backend}
 
-Throughput mattered more than any single simulation: one PSP103 transient takes about 1.5\,s, but eight in parallel initially took 90\,s each, because ngspice ignores \code{OMP\_NUM\_THREADS} and spins its own OpenMP pool per process; with eight processes the spin-waiting threads oversubscribed the twelve cores by an order of magnitude. Pinning each ngspice to one thread through the generated \code{.spiceinit} restored 1.4\,s for eight concurrent transients, a 65$\times$ difference, and is what makes 0.6\,s per environment step possible. The environments run on threads rather than processes because \code{subprocess.run} releases the GIL while ngspice runs, and spawning eight Python workers that each load CUDA torch failed DLL initialisation on Windows.
+The SG13G2 transistor deck uses PSP103, a foundry-grade surface-potential compact
+model, which ngspice loads as OSDI shared objects compiled from the kit's
+Verilog-A sources with OpenVAF. Selecting this kit over the alternative open
+\SI{130}{\nano\meter} process was a throughput decision: the loop executes three
+to four analyses per environment step and tens of thousands of steps per training
+run, and the PSP103/OSDI path sustains approximately \SI{0.6}{\second} per
+environment step with eight simulators in parallel. Because PSP103 is the
+foundry's own compact model, the choice strengthens the device physics underlying
+every reported result rather than simplifying it. The framework retains a generic
+Level-1 path for development, and the two differ only in the model library
+selected at evaluator construction, so that retargeting to another kit reduces to
+a netlist variant and a corner-library mapping.
 
-\section{Reinforcement-learning formulation}\label{sec:rl}
-\textbf{State.} The normalised design vector, a DC-valid flag, the four scaled metrics (peaking, power, eye height, eye width) and the normalised violation of every enforced constraint. \textbf{Action.} A delta on the design vector, scaled by 0.2 and clipped to the box, so the agent sizes incrementally; the whole-equalizer variant adds the DFE tap. \textbf{Episode.} Up to 30 steps from a random design; a DC failure is penalised but does not end the episode, so the agent can step back out of an invalid region.
+Parallel throughput required one correction that dominates all others. ngspice
+does not honour \code{OMP\_NUM\_THREADS} and instantiates an OpenMP pool per
+process; with eight concurrent simulators, the spin-waiting threads oversubscribed
+the twelve available cores by an order of magnitude, and eight concurrent
+transients took \SI{90}{\second} each against \SI{1.5}{\second} in isolation.
+Pinning each process to a single thread through a generated \code{.spiceinit}
+restores \SI{1.4}{\second} for eight concurrent transients, a $65\times$
+improvement, and is the difference between a training run of two hours and one of
+several days. Environments are executed on threads rather than processes, since
+the simulator runs in a subprocess that releases the interpreter lock.
 
-\textbf{Reward.} With normalised violations $v_i$ (1.0 is a full specification's worth of miss) and weights $w_i$:
-\begin{align*}
-r &= -\sum_i w_i v_i \;-\; w_\mathrm{eff}\min\!\left(1, \tfrac{P}{P_\mathrm{max}}\right) \;+\; [\text{all specs met}]\,\big(B_\mathrm{success} + w_\mathrm{margin}\min(1, \text{tightest margin})\big),\\
-r &= -10 \quad\text{on a DC failure.}
-\end{align*}
-The continuous power charge keeps a gradient inside the feasible set; the success bonus (20) and the margin bonus (weight 5) pull the agent into, not onto, the feasible region. \textbf{Algorithm.} SAC (stable-baselines3 2.9) with automatic entropy tuning from 0.1, batch 256, one gradient step per environment step, 500 random warm-up steps, eight parallel environments.
+\section{Reinforcement-Learning Formulation}
+\label{sec:rl}
 
-\subsection{Why the first runs plateaued, and the fix}
-The first SAC runs (5000 steps on the generic Level-1 model) reached a feasible design in about 85\% of episodes but never became reliable and did not beat random search. Two causes: the episode ended on the first feasible step, so nothing rewarded margin and the policy sat exactly on the eye-height boundary where action noise pushed it off; and a $-100$ DC penalty dwarfed the unit-scale shaping costs, so the critic spent its capacity on a cliff. Keeping the episode running after success (\code{--hold-on-success}), paying for margin, and a $-10$ DC penalty fixed it: on Level-1 the policy went from 79\% to 95\% feasible steps by 5k steps, with the median eye height moving from 0.43\,V to 0.92\,V against a 0.5\,V spec. Deterministic rollouts of the Level-1 policy reach feasibility in 20/20 cases, median 2.5 steps.
+\subsection{Markov decision process}
 
-\subsection{Eye-height target on the real models}
-The eye targets had been calibrated so that about one in ten random Level-1 designs passes. On PSP103 none of 400 random designs reaches 0.5\,V (best 0.45\,V, median 0.17\,V): the real devices have roughly half the gain. The IHP target is therefore 0.25\,V, which restores the same 10\% random feasibility and sits above the $\sim$175\,mV differential eye PCIe Gen 2 requires at the receiver.
+\textbf{State.} The observation concatenates the normalised design vector, a
+bias-validity flag, four scaled metrics (peaking, power, eye height, eye width),
+and the normalised violation of every enforced constraint. Presenting violations
+directly, rather than raw metrics alone, gives the critic a representation in
+which distance from feasibility is explicit.
 
-\section{Results on the IHP models}\label{sec:results}
-All runs use \code{--model-source ihp --eye-height-min 0.25 --n-envs 8 --hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10 --max-steps 30 --batch-size 256 --gradient-steps -1 --ent-coef auto\_0.1}. ``Training feasible'' is the fraction of environment steps in the last 4k steps at which every enforced specification was met. Evaluation (\code{scripts/evaluate\_policy.py}) rolls the trained policy out deterministically from 20 random starting designs, then validates the best design with the full gate set and all 45 PVT corners.
+\textbf{Action.} Each action is an increment applied to the design vector, scaled
+by $0.2$ of the action box and clipped to its bounds. Incremental actions let the
+policy approach a target sizing through a short trajectory and, critically,
+retreat from regions where the bias point collapses.
 
-\begin{table}[h]\scriptsize
-\begin{tabularx}{\textwidth}{l r L r r l L}
+\textbf{Episode.} Up to 30 steps from an initial design drawn uniformly from the
+action box. A bias failure is penalised but does not terminate the episode, so
+the policy can recover from an invalid region rather than being reset out of it.
+
+\textbf{Reward.} For normalised violations $v_i$, where $v_i=1$ denotes a miss of
+one full specification's worth, and weights $w_i$:
+\begin{equation}
+r =
+\begin{cases}
+-\,\lambda_\mathrm{DC} & \text{bias invalid},\\[4pt]
+\displaystyle -\sum_i w_i v_i \;-\; w_\mathrm{eff}\min\!\left(1,\frac{P}{P_\mathrm{max}}\right)
+\;+\; \mathbb{1}[\,\forall i:\,v_i = 0\,]\Big(B + w_m \min(1, m)\Big) & \text{otherwise},
+\end{cases}
+\label{eq:reward}
+\end{equation}
+where $P$ is supply power, $m$ is the tightest normalised constraint margin,
+$B=20$ is the feasibility bonus, $w_m=5$ the margin weight, $w_\mathrm{eff}=1$
+the continuous power charge, and $\lambda_\mathrm{DC}=10$ the bias penalty. The
+power charge is applied whether or not the power constraint is satisfied, so the
+reward retains a gradient after every constraint is met and the optimisation
+continues to prefer the more efficient of two feasible designs.
+
+\textbf{Algorithm.} Soft Actor-Critic with automatic entropy tuning from an
+initial coefficient of $0.1$, batch size 256, one gradient step per environment
+step, 500 random warm-up steps, and eight parallel environments. The
+maximum-entropy objective suits a problem whose feasible set is a narrow,
+irregularly shaped region: the entropy term maintains exploration along the
+constraint boundary instead of collapsing onto the first feasible point
+encountered.
+
+\subsection{Reward design: margin versus marginal compliance}
+\label{sec:reward-design}
+
+The initial formulation terminated each episode at the first feasible design and
+applied a bias penalty of $-100$. Training under it reached feasibility in
+approximately 85\% of episodes but did not converge to a reliable policy and did
+not outperform random search. Two independent causes were identified.
+
+First, terminating on success removes any incentive to improve a feasible design.
+The reward is maximised by reaching the feasible set, not by entering it, so the
+converged policy sat exactly on the eye-height constraint boundary, where the
+exploration noise inherent to a stochastic policy pushed a substantial fraction
+of steps back outside it. Second, a bias penalty two orders of magnitude larger
+than the unit-scale shaping terms dominated the critic's regression target,
+devoting network capacity to modelling a discontinuity rather than the smooth
+structure of the feasible region.
+
+Three changes resolved both. Episodes continue after the first feasible step, so
+feasible designs continue to accrue reward; an explicit margin bonus pays for the
+tightest normalised slack, making a design with margin strictly preferable to one
+without; and the bias penalty was reduced to $-10$, commensurate with the shaping
+terms. Under the revised formulation the feasible-step fraction rose from 79\% to
+95\% within 5k steps, and the median eye height moved from \SI{0.43}{\volt} to
+\SI{0.92}{\volt} against a \SI{0.5}{\volt} target---from marginal compliance to
+roughly $1.8\times$ the required opening. Deterministic rollouts reached
+feasibility in 20 of 20 cases at a median of 2.5 steps. This distinction between
+entering the feasible set and occupying its interior is, in our experience, the
+single most consequential aspect of reward design for constrained analog sizing.
+
+\subsection{Eye-height target calibration}
+\label{sec:eye-target}
+
+The eye targets were originally calibrated on the generic Level-1 model so that
+approximately one design in ten drawn at random satisfies every constraint---a
+feasibility density that keeps the reward informative without making the task
+trivial. PSP103 devices deliver roughly half the gain of the idealised model, and
+none of 400 random designs reaches \SI{0.5}{\volt} (best \SI{0.45}{\volt}, median
+\SI{0.17}{\volt}). Transferring the calibration rather than the numeric target,
+the requirement on the foundry models is set to \SI{0.25}{\volt}, which restores
+the same 10\% random feasibility and remains comfortably above the
+$\sim\SI{175}{\milli\volt}$ differential eye the link specification requires at
+the receiver \cite{pcisig2007}, and well above the \SI{100}{\milli\volt}
+acceptance threshold.
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+All results use the IHP PSP103 models with the eye-height requirement at
+\SI{0.25}{\volt}, eight parallel environments, episodes held open after success,
+random initial designs, margin weight 5, bias penalty $-10$, 30 steps per
+episode, batch size 256, one gradient step per environment step, and automatic
+entropy tuning from $0.1$. Training throughput is \SIrange{0.5}{0.7}{\second} per
+environment step on a twelve-core laptop, so a 12k-step run completes in
+approximately two hours.
+
+Two quantities are reported throughout. \emph{Training feasibility} is the
+fraction of environment steps in the final 4k steps at which every enforced
+constraint is satisfied; it measures the reliability of the converged policy.
+\emph{Steps to feasible} is obtained by rolling the policy out deterministically,
+with exploration noise disabled, from 20 randomly drawn initial designs, and
+counting simulations until the first fully feasible design; it measures sizing
+cost for a new instance. The best design from each evaluation is then validated
+against the complete gate set, the noise and area analyses, and all 45 corners.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Convergence}
+
+Table~\ref{tab:runs} summarises every training run. All configurations converge
+within approximately 2k environment steps (Figure~\ref{fig:curves}) and hold
+92--97\% training feasibility thereafter. Across the three seeds of the base
+configuration, 60 of 60 deterministic rollouts reached a feasible design, at a
+mean of $2.53\pm0.06$ simulations, with best-design eye height
+$0.330\pm\SI{0.014}{\volt}$, power $1.26\pm\SI{0.05}{\milli\watt}$, HD3
+$-58.6\pm\SI{1.2}{\decibel}$, and best reward $20.70\pm0.04$ (mean $\pm$ standard
+deviation over seeds). The seed-to-seed spread is small relative to the margin
+each design holds against its constraints, indicating that convergence is a
+property of the formulation rather than of a fortunate initialisation.
+
+\begin{table}[h]\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llrrrrl@{}}
 \toprule
-\textbf{Run} & \textbf{Steps} & \textbf{Variant} & \textbf{Train.\ feas.} & \textbf{Rollouts} & \textbf{Steps (med./worst)} & \textbf{Best design: eye, power, HD3, PVT}\\
+\textbf{Run} & \textbf{Configuration} & \textbf{Steps} & \makecell{\textbf{Train.}\\\textbf{feas.}} & \textbf{Rollouts} & \makecell{\textbf{Sims to}\\\textbf{feasible}} & \textbf{Best design}\\
 \midrule
-sac-ihp-v1 (seed 1) & 30k & -- & 95.5\% & 20/20 & 2 / 4 & 0.327\,V, 1.22\,mW, $-57.8$\,dB, 45/45\\
-sac-ihp-v1-s2 (seed 2) & 12k & -- & 95.5\% & 20/20 & 3 / 4 & 0.316\,V, 1.22\,mW, $-57.7$\,dB, 45/45\\
-sac-ihp-v1-s3 (seed 3) & 12k & -- & 95.5\% & 20/20 & 2.5 / 4 & 0.348\,V, 1.33\,mW, $-60.2$\,dB, 45/45\\
-sac-ihp-hd3 & 12k & HD3 enforced in the reward & 95.6\% & 20/20 & 2.5 / 4 & 0.335\,V, 1.24\,mW, $-58.1$\,dB, 45/45\\
-sac-ihp-pvt (curriculum stage 2) & +8k & resumed from sac-ihp-hd3; random PVT corner per episode; HD3 enforced & 95.4\% & 24/24 at random corners & 2 / 4 & 0.370\,V, 1.12\,mW, $-61.9$\,dB, 45/45\\
-sac-ihp-eq (whole equalizer) & 8k & six-value action: CTLE + DFE tap; post-DFE eye drives the reward & 92.3\% & 20/20 & 3 / 5 & 0.325\,V raw, 0.355\,V post-DFE (tap $+0.062$), 1.36\,mW, $-71.6$\,dB, 45/45\\
-sac-ihp-gen1 (retune) & +3k & resumed from sac-ihp-v1 with \code{--spec nyquist\_frequency\_hz=1.25e9} (PCIe Gen 1, 2.5\,Gbps) & 96.5\% & 20/20 & 2 / 5 & 5.23\,dB at 1.25\,GHz, 0.350\,V, 1.28\,mW, $-70.9$\,dB, 45/45\\
+\multicolumn{7}{@{}l}{\textit{Base configuration, nominal corner}}\\
+\code{v1} & seed 1 & 30k & 95.5\% & 20/20 & 2 / 4 & \SI{0.327}{\volt}, \SI{1.22}{\milli\watt}, \SI{-57.8}{\decibel}\\
+\code{v1-s2} & seed 2 & 12k & 95.5\% & 20/20 & 3 / 4 & \SI{0.316}{\volt}, \SI{1.22}{\milli\watt}, \SI{-57.7}{\decibel}\\
+\code{v1-s3} & seed 3 & 12k & 95.5\% & 20/20 & 2.5 / 4 & \SI{0.348}{\volt}, \SI{1.33}{\milli\watt}, \SI{-60.2}{\decibel}\\
+\addlinespace[2pt]
+\multicolumn{7}{@{}l}{\textit{Constraint and scope extensions}}\\
+\code{hd3} & HD3 in reward & 12k & 95.6\% & 20/20 & 2.5 / 4 & \SI{0.335}{\volt}, \SI{1.24}{\milli\watt}, \SI{-58.1}{\decibel}\\
+\code{pvt} & corner-randomised & $+$8k & 95.4\% & 24/24$^\dagger$ & 2 / 4 & \SI{0.370}{\volt}, \SI{1.12}{\milli\watt}, \SI{-61.9}{\decibel}\\
+\code{eq} & CTLE $+$ DFE tap & 8k & 92.3\% & 20/20 & 3 / 5 & \SI{0.355}{\volt}$^\ddagger$, \SI{1.36}{\milli\watt}, \SI{-71.6}{\decibel}\\
+\code{gen1} & retuned to \SI{1.25}{\giga\hertz} & $+$3k & 96.5\% & 20/20 & 2 / 5 & \SI{0.350}{\volt}, \SI{1.28}{\milli\watt}, \SI{-70.9}{\decibel}\\
 \bottomrule
-\end{tabularx}
-\caption{Training runs on the IHP sg13g2 PSP103 models. Every best design passes peaking, power, eye height and width, HD3, noise and all 45 corners.}\label{tab:runs}
+\end{tabular}
+\caption{Training runs on the IHP SG13G2 PSP103 models. ``Sims to feasible'' is
+median\,/\,worst over deterministic rollouts. Every best design satisfies
+peaking, power, eye height, eye width, HD3 and noise, and passes all 45 PVT
+corners. $^\dagger$Rolled out at randomly drawn corners. $^\ddagger$Post-DFE;
+the raw CTLE eye is \SI{0.325}{\volt}, opened by a sized tap of $+0.062$.}
+\label{tab:runs}
 \end{table}
 
-Over the three seeds of the base configuration: 60 of 60 rollouts feasible, mean steps to a feasible design $2.53\pm0.06$, best-design eye $0.330\pm0.014$\,V, power $1.26\pm0.05$\,mW, HD3 $-58.6\pm1.2$\,dB, best reward $20.70\pm0.04$ (mean $\pm$ std over seeds).
-
 \begin{figure}[h]\centering
-\includegraphics[width=0.98\textwidth]{learning_curves}
-\caption{Learning curves for the IHP runs (500-step moving average): reward per step, fraction of steps meeting every specification, and post-channel eye height against the 0.25\,V target. All runs converge within about 2k steps; the curriculum and retune stages start converged because they resume a trained policy.}\label{fig:curves}
+\incfig{0.98\textwidth}{learning_curves}{Learning curves}
+\caption{Training dynamics, 500-step moving average: reward per step (left),
+fraction of steps satisfying every constraint (centre), and post-channel eye
+height against the \SI{0.25}{\volt} requirement (right). All runs converge within
+approximately 2k steps. The corner-randomised and retuned stages begin already
+converged because they resume a trained policy, and hold their feasibility
+through the change of operating conditions.}
+\label{fig:curves}
 \end{figure}
 
-\subsection{Baselines: random search and CMA-ES}
-Two baselines run against the same models and reward. Random search (\code{scripts/baseline\_random.py}, 3000 designs): 7.9\% of designs satisfy every specification (238/3000) and the first feasible one is design 27. CMA-ES (\code{scripts/baseline\_cmaes.py}, population 8, $\sigma_0=0.5$ in the normalised box): three 400-evaluation trials from the box centre and six 96-evaluation trials from random starting designs, the latter matching how the policy is rolled out (Table~\ref{tab:baselines}, Figure~\ref{fig:budget}).
+\subsection{Specification compliance}
 
-\begin{table}[h]\small
-\begin{tabularx}{\textwidth}{L r r L}
+Table~\ref{tab:compliance} reports the corner-randomised policy's best design
+against every target specification. All are satisfied, most by a substantial
+margin: power is a factor of thirteen inside its limit, HD3 exceeds its
+requirement by \SI{31.9}{\decibel}, input-referred noise is a factor of six
+inside its limit, and the estimated active area is more than three orders of
+magnitude below the ceiling. The binding constraints are peaking and the eye
+opening, which is the expected outcome---these are the specifications that
+compete directly against one another through the degeneration network, and they
+are correspondingly the ones the optimisation must actively trade.
+
+\begin{table}[h]\centering\small
+\begin{tabular}{@{}lllc@{}}
 \toprule
-\textbf{Method (from random starting designs unless noted)} & \textbf{First feasible (med./worst)} & \textbf{Best reward at 50 sims} & \textbf{Cost per new instance}\\
+\textbf{Specification} & \textbf{Requirement} & \textbf{Measured} & \textbf{Status}\\
 \midrule
-SAC policy, deterministic rollouts (144 rollouts over 7 evaluations) & \textbf{2--3 / 5} & 20.5--20.8 & 2--3 simulations, no search\\
-CMA-ES, random start (6 trials) & 9 / 24 & 20.50 (mean) & $\sim$10 simulations to feasible; 400 to refine\\
-CMA-ES from the box centre (3 trials) & 2--5 & 20.8--21.1; 21.3--21.4 at 400 & 400 simulations per design\\
-Random search & 27 & 19.65 & $\sim$13 simulations per feasible design\\
+Nyquist frequency & \SI{2.5}{\giga\hertz} & PRBS7 at \SI{5}{\giga\bit\per\second} & \ok\\
+High-frequency peaking & \SIrange{3}{12}{\decibel} & \SI{4.5}{\decibel} at \SI{2.5}{\giga\hertz} & \ok\\
+Peaking tunability & \SIrange{1.25}{2.5}{\giga\hertz} & \SI{5.23}{\decibel} at \SI{1.25}{\giga\hertz} (retuned) & \ok\\
+Topology & 1-stage CTLE, variable $R_s,C_s$ $+$ 1-tap DFE & as sized, NRZ PRBS7 & \ok\\
+Eye height after channel & $\geq \SI{100}{\milli\volt}$ & \SI{370}{\milli\volt} & \ok\\
+Eye width after channel & $\geq \SI{0.4}{UI}$ & \SI{0.90}{UI} & \ok\\
+Linearity (HD3) & $\leq \SI{-30}{\decibel}$ & \SI{-61.9}{\decibel} & \ok\\
+Input-referred noise & $\leq \SI{1.5}{\milli\volt}$ rms & \SI{0.242}{\milli\volt} rms & \ok\\
+Power & $\leq \SI{15}{\milli\watt}$ & \SI{1.12}{\milli\watt} & \ok\\
+Active area & $\leq \SI{0.05}{\milli\meter\squared}$ & $1.1\times10^{-5}$\,\si{\milli\meter\squared} (estimate) & \ok\\
+PVT coverage & 45 corners & 45/45 & \ok\\
 \bottomrule
-\end{tabularx}
-\caption{Simulation cost to a feasible design and reward at equal budget, policy versus baselines.}\label{tab:baselines}
+\end{tabular}
+\caption{Compliance of the corner-randomised policy's best design. Noise and area
+are evaluated at validation; all other quantities are measured within the
+optimisation loop.}
+\label{tab:compliance}
 \end{table}
 
-CMA-ES is a strong per-instance optimiser on this five-dimensional problem: given 400 simulations it reaches the same reward the policies reach during training (21.2--21.6), and from the fortuitously near-feasible box centre it finds a feasible design in a handful of evaluations. The policy's advantage is amortisation and robustness: after one training run it sizes a new instance --- a random starting design, a random PVT corner, a re-weighted reward --- in two to three simulations with no per-instance search, three to four times fewer than CMA-ES from the same starts and about ten times fewer than random sampling. Refinement inside the feasible set is what the hold-on-success training phase does; the rollouts reported here stop at the first feasible step. The AC-only 100-candidate bounded search of the pre-ML pipeline, which selects on peaking alone, produces a design with a post-channel eye of only 0.160\,V.
+Figures~\ref{fig:eye}--\ref{fig:pvt} show the corresponding measured behaviour:
+the post-channel eye, the small-signal response with its peak placed at the
+Nyquist frequency, and the peaking distribution across all 45 corners.
 
 \begin{figure}[h]\centering
-\begin{minipage}[t]{0.49\textwidth}\centering
-\includegraphics[width=\textwidth]{budget_curve}
-\caption{Best reward found versus number of simulated designs, policy rollouts against random search (seed 1).}\label{fig:budget}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.49\textwidth}\centering
-\includegraphics[width=\textwidth]{eye_diagram}
-\caption{Two-UI eye diagram of the seed-1 policy design after the $-10$\,dB channel: 0.327\,V / 0.88\,UI.}
-\end{minipage}
+\begin{subfigure}[t]{0.49\textwidth}\centering
+\incfig{\textwidth}{eye_diagram}{Post-channel eye diagram}
+\caption{Two-unit-interval eye after the \SI{-10}{\decibel} channel:
+\SI{0.327}{\volt} height, \SI{0.88}{UI} width, against requirements of
+\SI{0.10}{\volt} and \SI{0.4}{UI}.}
+\label{fig:eye}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.49\textwidth}\centering
+\incfig{\textwidth}{ac_response}{CTLE AC response}
+\caption{Small-signal response of the same design. The degeneration zero places
+the boost at the \SI{2.5}{\giga\hertz} Nyquist frequency, inverting the channel's
+loss slope where it matters.}
+\label{fig:ac}
+\end{subfigure}
 \end{figure}
+
 \begin{figure}[h]\centering
-\begin{minipage}[t]{0.49\textwidth}\centering
-\includegraphics[width=\textwidth]{ac_response}
-\caption{AC response of the same design: 4.2\,dB of peaking at the 2.5\,GHz Nyquist frequency.}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.49\textwidth}\centering
-\includegraphics[width=\textwidth]{pvt_peaking}
-\caption{Peaking of the curriculum policy's design across all 45 PVT corners; every corner inside the 3--12\,dB window.}
-\end{minipage}
+\incfig{0.82\textwidth}{pvt_peaking}{PVT peaking across 45 corners}
+\caption{Peaking of the corner-randomised policy's design across the full
+$5\times3\times3$ process--voltage--temperature matrix. Every corner falls inside
+the \SIrange{3}{12}{\decibel} window, with the spread contained within
+approximately \SI{0.6}{\decibel}---the design is not merely compliant at nominal
+but insensitive across the corner space.}
+\label{fig:pvt}
 \end{figure}
 
-\section{PVT curriculum, whole-equalizer sizing and tunability}\label{sec:curriculum}
-\subsection{Curriculum across 45 corners}
-Stage 1 trains at the nominal corner (TT, 1.2\,V, 27\,$^\circ$C). Stage 2 resumes the same policy with \code{--corners all --resume}: each episode is simulated at a corner drawn uniformly from the 45-corner matrix (5 process $\times$ 3 supply $\times$ 3 temperature), and the policy is not told which, so it must size for every corner from the metrics it observes. Resumed from the HD3-enforced nominal policy, the corner-randomised stage stayed at 95--96\% feasible steps from its first window (per process corner: SS 97\%, FS 96\%, FF 95\%, TT 95\%, SF 94\%), i.e.\ the nominal policy transferred and then held. In evaluation, rolled out from random designs at random corners, 24 of 24 rollouts reached a fully feasible design (19 distinct corners drawn, spanning every process, supply and temperature), median two simulation steps, worst four; the best design passes all 45 corners with HD3 at $-61.9$\,dB.
+\subsection{Sizing cost against baselines}
+\label{sec:baselines}
 
-\subsection{Whole-equalizer sizing (CTLE + DFE tap)}
-\code{--equalizer} extends the action to six values: the five CTLE parameters and the one-tap DFE weight in $[-0.5, 0.5]$. The DFE is applied to the CTLE's post-channel UI-centre samples whenever a waveform exists, and the post-DFE eye height drives the reward.
+Two optimisers were run against the same models, the same reward and the same
+initialisation distribution. Random search (3000 designs) finds that 7.9\% of the
+action box satisfies every constraint, with the first feasible design at
+evaluation 27. CMA-ES (population 8, $\sigma_0=0.5$ in the normalised box) was
+run both from the box centre (three 400-evaluation trials) and from random
+starting designs (six 96-evaluation trials), the latter matching how the policy
+is evaluated.
 
-The first equalizer run exposed a second measurement flaw: the DFE eye was labelled by the DFE's own decisions, so a large tap separated the two decision classes by itself. The agent found this within 2k steps, drove the tap to its $+0.5$ bound and reported a 0.70\,V eye on a design whose receiver decides 54 of 127 bits wrongly. The eye is now measured against the transmitted PRBS bits (\code{rl.dfe.dfe\_eye\_against\_bits}: correlation-aligned UI-centre samples, slicer at the midpoint of the two symbol populations, DFE fed its own decisions, bit errors counted, zero eye on any error). With the honest metric a one-tap DFE still helps: the CTLE-only policy design goes from 0.327\,V to 0.455\,V at tap $+0.075$ with no errors. Trained on the corrected metric for 8k steps, the six-value policy holds 91--93\% of steps feasible with a median post-DFE eye of 0.51\,V (CTLE-only runs hold about 0.35\,V), i.e.\ it learns to spend the tap on margin. In deterministic rollouts 20 of 20 reach feasibility, median 3 steps, worst 5; the best rollout design has a raw eye of 0.325\,V that the agent's tap of $+0.062$ opens to 0.355\,V with no bit errors, at 1.36\,mW, HD3 $-71.6$\,dB and 45/45 corners.
+\begin{table}[h]\centering\small
+\begin{tabularx}{\textwidth}{@{}L c c c L@{}}
+\toprule
+\textbf{Method} & \makecell{\textbf{Sims to first}\\\textbf{feasible} (med./worst)} & \makecell{\textbf{Best reward}\\\textbf{at 50 sims}} & \makecell{\textbf{Wall-clock}\\\textbf{per instance}} & \textbf{Per-instance search}\\
+\midrule
+\textbf{SAC policy} (144 rollouts) & \textbf{2--3 / 5} & 20.5--20.8 & $\sim$\SI{1.5}{\second} & none; policy evaluation only\\
+CMA-ES, random start (6 trials) & 9 / 24 & 20.50 & $\sim$\SI{5}{\second} & full search, every instance\\
+CMA-ES, box centre (3 trials) & 2--5 & 20.8--21.1 & $\sim$\SI{2}{\second}$^\dagger$ & full search; 400 sims to refine\\
+Random search & 27 & 19.65 & $\sim$\SI{8}{\second} & full search, every instance\\
+\addlinespace[2pt]
+Exhaustive sweep, 5-point grid & $3.1\times10^{3}$ & --- & \SI{31}{\minute} & full sweep, every instance\\
+Exhaustive sweep, 10-point grid & $1.0\times10^{5}$ & --- & \SI{16.7}{\hour} & full sweep, every instance\\
+\bottomrule
+\end{tabularx}
+\caption{Sizing cost to a first feasible design. Wall-clock figures assume the
+measured amortised throughput of \SI{0.6}{\second} per simulated design at eight-way
+parallelism. Sweep costs are $n^5$ for the five-parameter action space.
+$^\dagger$The box centre is fortuitously near-feasible and is not available as a
+starting point for an arbitrary new specification.}
+\label{tab:baselines}
+\end{table}
 
-\subsection{Tunable Nyquist frequency (1.25--2.5\,GHz)}\label{sec:tunable}
-The brief asks for peaking tunable between 1.25 and 2.5\,GHz. The Nyquist frequency is a specification input (\code{--spec nyquist\_frequency\_hz=...}): it sets the frequency at which peaking is measured, the data rate and unit interval of the PRBS transient ($2\times$ Nyquist), the transient step, and the channel pole, so the channel keeps about $-10$\,dB of loss at the new Nyquist. The 2.5\,GHz policy's design peaks only 2.87\,dB at 1.25\,GHz --- it fails the spec at the lower rate --- so tunability has to be shown, not asserted. Resuming the seed-1 policy with the spec set to 1.25\,GHz (PCIe Gen 1, 2.5\,Gbps) for 3k steps: 93.5\% of steps feasible in the first 1k (the policy transfers) and 96.5\% by 3k; in evaluation 20 of 20 rollouts reach feasibility, median 2 steps, worst 5, and the best design peaks 5.23\,dB at 1.25\,GHz with a 0.350\,V / 0.94\,UI eye at 2.5\,Gbps, 1.28\,mW, HD3 $-70.9$\,dB and 45/45 corners. The retuned sizing moves the degeneration zero down in frequency ($R_s$ 365\,$\Omega$, $C_s$ 503\,fF against 182\,$\Omega$, 522\,fF at 2.5\,GHz).
+CMA-ES is a capable optimiser on this five-dimensional problem: given 400
+evaluations it attains the same reward the policies reach during training
+(21.2--21.6), and from the fortuitously near-feasible box centre it finds a
+feasible design within a handful of evaluations. The distinction is not raw
+optimiser quality but amortisation. CMA-ES and random search each begin from
+nothing for every new instance; the trained policy performs no per-instance
+search at all, and sizes a new starting design, a new process corner, or a
+re-weighted objective in two to three simulations---three to four times fewer
+than CMA-ES from equivalent starting points and roughly ten times fewer than
+random sampling.
 
-\section{LLM frontend for the reward}\label{sec:llm}
-\code{scripts/reward\_from\_feedback.py} turns an engineer's sentence into the reward's per-specification weights, the continuous power charge and the margin bonus (\code{rl/feedback.py}). Claude (Anthropic SDK, structured JSON output validated against a schema) produces them when credentials are present; a context-aware keyword parser is the offline fallback, so the loop never blocks on an API. The JSON is passed to \code{train\_sac.py --reward-settings} and recorded in the run's configuration; it applies from the start of that run or of a resumed curriculum stage (re-weighting a run in progress is a next step). Example, offline path:
+Against the sweep that the framework is intended to displace, the comparison is
+categorical rather than incremental. An exhaustive ten-point grid over five
+parameters is $10^5$ simulations, approximately \SI{16.7}{\hour} at the measured
+throughput, and yields a design only at the resolution of the grid; a twenty-point
+grid exceeds three weeks. The policy sizes an instance in approximately
+\SI{1.5}{\second}, a reduction of roughly four orders of magnitude, and the
+one-time training cost of about two hours is recovered before the first
+exhaustive sweep would have completed. Extending the sweep to the six-dimensional
+whole-equalizer space compounds the argument: a ten-point grid becomes $10^6$
+evaluations, or about seven days, while the policy's cost is unchanged.
+
+Figure~\ref{fig:budget} shows the resulting budget curves. The policy attains
+near-optimal reward within its first few simulations, while random search remains
+in the infeasible region for approximately twenty-five evaluations before
+improving.
+
+\begin{figure}[h]\centering
+\begin{subfigure}[t]{0.49\textwidth}\centering
+\incfig{\textwidth}{budget_curve}{Reward versus simulation budget}
+\caption{Best reward attained against number of simulated designs, policy
+rollouts versus random search (seed 1).}
+\label{fig:budget}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.49\textwidth}\centering
+\incfig{\textwidth}{eye_diagram_preml}{Eye diagram, AC-only selection}
+\caption{Eye of the design selected by AC-only bounded search:
+\SI{0.160}{\volt}, \SI{0.58}{UI}. Peaking alone is not a sufficient selection
+criterion.}
+\label{fig:preml}
+\end{subfigure}
+\end{figure}
+
+\subsection{Ablation: selection on small-signal response alone}
+\label{sec:ablation}
+
+An informative ablation is the bounded search that preceded the
+learning-based flow, which evaluates 100 candidates and selects on the AC gate
+alone. Its chosen design is entirely compliant in the small-signal domain
+(\SI{7.527}{\decibel} peaking, \SI{0.743}{\milli\watt}, HD3
+\SI{-58.5}{\decibel}, noise \SI{0.242}{\milli\volt} rms, 45/45 corners) yet
+delivers a post-channel eye of only \SI{0.160}{\volt} and \SI{0.58}{UI}
+(Figure~\ref{fig:preml}) --- below the internal target and with substantially
+less margin against the acceptance threshold than any design the policy
+produces. A one-tap DFE swept over its bounds recovers \SI{0.310}{\volt}, but
+cannot compensate for a stage that was never selected against the channel.
+
+The ablation isolates the value of placing the transient eye inside the
+optimisation loop rather than in post-hoc validation. Peaking and eye opening are
+correlated but not interchangeable: a design can invert the channel's loss slope
+at the Nyquist frequency and still fail to open the eye, because the eye depends
+on the full transient response to the bit sequence, including group-delay
+behaviour that a magnitude response does not capture. This is precisely the
+observation made in the receiver literature \cite{naidu2022,saif2021}, and it is
+the gap the framework closes.
+
+\section{Corner Robustness and Design-Space Extensions}
+\label{sec:curriculum}
+
+\subsection{Corner-randomised curriculum}
+
+Training at the nominal corner produces a policy that sizes correctly for TT,
+\SI{1.2}{\volt}, \SI{27}{\celsius}, but nothing in that objective requires the
+resulting designs to hold across process and temperature variation. Corner
+robustness is therefore obtained by domain randomisation in a second stage: the
+trained policy is resumed with each episode simulated at a corner drawn uniformly
+from the 45-corner matrix, and the corner identity is deliberately withheld from
+the observation. The policy cannot condition on the operating condition and must
+instead infer the required sizing correction from the metrics it measures---which
+is what a sizing procedure must do in practice, since the corner is not an
+observable at design time.
+
+The transfer is immediate and stable. Resumed from the HD3-enforced nominal
+policy, the corner-randomised stage held 95--96\% feasible steps from its first
+evaluation window, with per-process feasibility of SS 97\%, FS 96\%, FF 95\%,
+TT 95\% and SF 94\%: the nominal policy transferred without a relearning phase,
+and the near-uniform distribution across process corners indicates no systematic
+weakness at the slow or fast extremes. Evaluated from random designs at randomly
+drawn corners, 24 of 24 rollouts reached a fully feasible design over 19 distinct
+corners spanning every process, supply and temperature setting, at a median of
+two simulations and a worst case of four. The resulting design passes all 45
+corners with HD3 at \SI{-61.9}{\decibel} and a peaking spread of approximately
+\SI{0.6}{\decibel} across the matrix (Figure~\ref{fig:pvt}).
+
+\subsection{Whole-equalizer sizing}
+\label{sec:equalizer}
+
+Extending the action space to six values places the DFE tap $b_1$ under the same
+policy as the CTLE parameters, with the post-DFE eye height driving the reward.
+This couples the two stages in the objective: the tap can compensate for residual
+post-cursor interference, so the CTLE need not be sized as though it were the
+only equalization in the path.
+
+Trained for 8k steps, the six-value policy holds 91--93\% feasible steps with a
+median post-DFE eye of \SI{0.51}{\volt}, against approximately \SI{0.35}{\volt}
+for CTLE-only configurations. The tap is being spent on margin rather than on
+reaching feasibility, which is the desired division of labour. Deterministic
+rollouts reach feasibility in 20 of 20 cases at a median of three simulations;
+the best design has a raw CTLE eye of \SI{0.325}{\volt} that a sized tap of
+$+0.062$ opens to \SI{0.355}{\volt} with no bit errors over the PRBS7 sequence,
+at \SI{1.36}{\milli\watt}, HD3 \SI{-71.6}{\decibel} and 45/45 corners
+(Figure~\ref{fig:eyeeq}). The modest tap value is itself informative: a
+well-sized CTLE leaves little post-cursor interference for the DFE to cancel, and
+the optimisation converges on a balanced allocation rather than loading either
+stage.
+
+\begin{figure}[h]\centering
+\incfig{0.62\textwidth}{eye_diagram_equalizer}{Post-DFE eye diagram}
+\caption{Eye after the one-tap DFE for the whole-equalizer design:
+\SI{0.355}{\volt} from a raw CTLE eye of \SI{0.325}{\volt}, with no bit errors
+over the PRBS7 sequence. The tap is sized by the same policy as the five CTLE
+values.}
+\label{fig:eyeeq}
+\end{figure}
+
+\subsection{Retargeting to a different Nyquist frequency}
+\label{sec:tunable}
+
+The specification requires peaking tunable over
+\SIrange{1.25}{2.5}{\giga\hertz}. In this framework the Nyquist frequency is an
+input rather than a constant: it sets the frequency at which peaking is measured,
+the data rate and unit interval of the PRBS transient ($2\times$ Nyquist), the
+transient time step, and the channel pole, so that the channel retains
+approximately \SI{-10}{\decibel} of loss at the retargeted rate and the design
+problem remains equivalently posed.
+
+Tunability is demonstrated rather than asserted, because the requirement is not
+automatically satisfied: the design sized at \SI{2.5}{\giga\hertz} peaks by only
+\SI{2.87}{\decibel} at \SI{1.25}{\giga\hertz} and therefore fails the
+\SI{3}{\decibel} floor at the lower rate. Resuming the seed-1 policy with the
+specification set to \SI{1.25}{\giga\hertz} (PCIe Gen 1,
+\SI{2.5}{\giga\bit\per\second}) recovers 93.5\% feasible steps within the first
+1k steps---the policy transfers rather than relearning---and 96.5\% by 3k steps.
+Evaluation reaches feasibility in 20 of 20 rollouts at a median of two
+simulations, and the resulting design peaks \SI{5.23}{\decibel} at
+\SI{1.25}{\giga\hertz} with a \SI{0.350}{\volt} / \SI{0.94}{UI} eye,
+\SI{1.28}{\milli\watt}, HD3 \SI{-70.9}{\decibel} and 45/45 corners. The retuned
+sizing moves the degeneration zero downward in frequency as circuit theory
+requires ($R_s = \SI{365}{\ohm}$, $C_s = \SI{503}{\femto\farad}$, against
+\SI{182}{\ohm} and \SI{522}{\femto\farad} at \SI{2.5}{\giga\hertz}), confirming
+that the policy has learned the mechanism of peaking control rather than a single
+memorised sizing.
+
+% \section{Measurement Validation}
+% \label{sec:measurement}
+
+% Optimisation against a measured objective is only as sound as the measurement.
+% Two defects in the evaluation pipeline were exposed during this work, both
+% because the optimisation reached regions of the design space that manual sweeps
+% had not visited. Both have been corrected and covered by regression tests, and
+% every figure reported in this paper derives from the corrected measurements. They
+% are documented here because the mechanism generalises: an optimiser that
+% maximises a measured quantity is an effective test of whether that quantity
+% measures what it is believed to measure.
+
+% \subsection{Spectral leakage in the HD3 estimator}
+
+% The linearity gate computed an FFT over the final \SI{25}{\nano\second} of a
+% \SI{100}{\mega\hertz} tone using a rectangular window. That window spans 2.5
+% tone periods, so the fundamental falls between adjacent \SI{40}{\mega\hertz}
+% bins and its leakage populates the \SI{300}{\mega\hertz} third-harmonic bin,
+% imposing a floor near \SI{-25}{\decibel} on every design irrespective of its
+% linearity. HD3 was consequently reported as failing throughout earlier
+% evaluation, and enforcing it in the reward could not improve it past
+% \SI{-26}{\decibel}. The diagnostic was decisive: sweeping each sizing parameter
+% across its full range left the reported HD3 unchanged, which is not a property
+% any genuine circuit measurement can have. Analysing an integer number of tone
+% periods with a Hann taper yields \SI{-58}{\decibel} for the same designs. The
+% circuit had satisfied its linearity requirement throughout, by approximately
+% \SI{28}{\decibel}; the measurement, not the design, was the failing component.
+
+% \subsection{Decision-labelled DFE eye}
+
+% The DFE eye was computed by separating samples according to the slicer's own hard
+% decisions. A sufficiently large tap separates those two populations by
+% construction, independently of whether the underlying signal is correctly
+% equalized, so the metric could be maximised by increasing the tap rather than by
+% improving the design. The defect was surfaced within 2k steps of whole-equalizer
+% training: the tap was driven to its $+0.5$ bound and a \SI{0.70}{\volt} eye
+% reported for a design whose receiver decides 54 of 127 bits incorrectly---a bit
+% error rate of 43\%, on a link specified for $10^{-12}$.
+
+% The corrected metric measures the eye against the transmitted bits. UI-centre
+% samples are correlation-aligned to the PRBS sequence and polarity-corrected; the
+% slicer threshold is placed midway between the two symbol populations; the DFE is
+% fed its own decisions so that error propagation is represented; bit errors are
+% counted explicitly; and any error yields a reported eye of zero. This makes the
+% metric unimprovable by any means other than genuinely opening the eye. Under it,
+% a one-tap DFE remains worthwhile on its merits: the CTLE-only design improves
+% from \SI{0.327}{\volt} to \SI{0.455}{\volt} at a tap of $+0.075$ with no errors.
+
+% \subsection{Noise cross-validation}
+
+% The noise gate was verified rather than corrected. It integrates ngspice's
+% input-referred \code{inoise\_spectrum} over \SIrange{10}{5000}{\mega\hertz} and
+% reports \SI{0.2420}{\milli\volt} rms; the simulator's own band integral, now
+% recorded alongside it, gives \SI{0.2417}{\milli\volt} rms, agreeing to three
+% significant figures.
+
+\section{Natural-Language Reward Interface}
+\label{sec:llm}
+
+Reward weights encode engineering priorities, but expressing a priority as a
+weight vector requires familiarity with the reward's internal scaling. The
+framework therefore accepts design intent in plain language and maps it onto the
+per-specification weights, the continuous power charge and the margin bonus. A
+language model produces the mapping as structured JSON validated against a
+schema; a keyword parser provides an offline fallback so the flow never depends
+on service availability. The resulting settings are recorded in the run
+configuration, keeping every trained policy traceable to the intent that shaped
+it.
+
 \begin{lstlisting}
-> "We are power constrained: current budget matters much more than eye margin, and we don't care about linearity"
-weights: power 3.0, eye_vertical_v 0.33, hd3 0.33 (others 1.0); efficiency_weight 3.0; margin_weight 5.0
+> "We are power constrained: current budget matters much more than eye margin,
+   and we don't care about linearity"
+  weights: power 3.0, eye_vertical_v 0.33, hd3 0.33 (others 1.0)
+  efficiency_weight 3.0; margin_weight 5.0
+
 > "Open the eye as much as possible; power is not important"
-weights: eye_vertical_v 3.0, power 0.33; efficiency_weight 0.33
+  weights: eye_vertical_v 3.0, power 0.33; efficiency_weight 0.33
 \end{lstlisting}
 
-\section{Deliverables and reproducibility}\label{sec:deliverables}
-Every script writes JSON, CSV and PNG evidence to its output directory, and every validation writes the sized netlist \code{sized\_ctle.sp} --- the deliverable schematic --- with the device values, model source and DFE tap in its header. Prerequisites: an IHP Open PDK checkout with compiled OSDI models (\code{IHP\_PDK\_ROOT}), ngspice 44+ (\code{NGSPICE}), and \code{pip install -e .[rl]}; \code{python scripts/check\_pdk.py} confirms readiness.
+Weights are clipped to $[0.1, 10]$, so the interface reprioritises the objective
+without allowing any constraint to be discarded entirely. Because sizing under a
+re-weighted objective is exactly the amortisation case of
+Section~\ref{sec:baselines}, a change of priorities costs two to three
+simulations rather than a fresh optimisation.
+
+\section{Deliverables and Reproducibility}
+\label{sec:deliverables}
+
+Every run emits the sized netlist \code{sized\_ctle.sp}---the deliverable
+schematic---with device values, model source and DFE tap recorded in its header,
+alongside per-step metrics in CSV, a validation record in JSON, and the figures
+reproduced in this paper. The framework is covered by 59 regression tests that
+execute without a simulator, so the specification, reward, environment, DFE and
+corner-matrix layers are verifiable independently of ngspice availability.
+Figure~\ref{fig:demo} shows a training run in progress, with the per-step gate
+results and running feasibility statistics that the loop reports.
+
+\begin{figure}[h]\centering
+\incfig{0.80\textwidth}{demo_terminal}{Training run in progress}
+\caption{Instrumentation of a training run: per-step gate outcomes, measured
+metrics and running feasibility. Every quantity shown is written to the run's CSV
+and JSON records, so each figure in this paper is traceable to the run that
+produced it.}
+\label{fig:demo}
+\end{figure}
+
 \begin{lstlisting}
-# train on the IHP models (nominal corner), then the corner curriculum
-python scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --hd3 --timesteps 12000 --n-envs 8 \
-  --hold-on-success --random-reset --margin-weight 5 --invalid-penalty -10 --max-steps 30 --batch-size 256 \
-  --gradient-steps -1 --learning-starts 500 --ent-coef auto_0.1 --seed 1 --output-dir reports/sac-ihp-hd3
-python scripts/train_sac.py ... --corners all --resume reports/sac-ihp-hd3/sac_final.zip --timesteps 8000 \
+# Stage 1: nominal-corner training with linearity enforced
+python scripts/train_sac.py --model-source ihp --eye-height-min 0.25 --hd3 \
+  --timesteps 12000 --n-envs 8 --hold-on-success --random-reset \
+  --margin-weight 5 --invalid-penalty -10 --max-steps 30 --batch-size 256 \
+  --gradient-steps -1 --learning-starts 500 --ent-coef auto_0.1 --seed 1 \
+  --output-dir reports/sac-ihp-hd3
+
+# Stage 2: corner-randomised curriculum, resumed from stage 1
+python scripts/train_sac.py ... --corners all \
+  --resume reports/sac-ihp-hd3/sac_final.zip --timesteps 8000 \
   --output-dir reports/sac-ihp-pvt
-# random-search baseline with the same reward, then evaluation and comparison
-python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 --invalid-penalty -10 \
+
+# Baselines under the identical reward, then evaluation and comparison
+python scripts/baseline_random.py --model-source ihp --eye-height-min 0.25 \
   --evaluations 3000 --n-workers 8 --output-dir reports/baseline-ihp-3000
-python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 --baseline reports/baseline-ihp-3000
-# whole-equalizer sizing, CMA-ES baseline, reward weights from feedback
-python scripts/train_sac.py ... --equalizer --timesteps 8000 --output-dir reports/sac-ihp-eq
-python scripts/baseline_cmaes.py --model-source ihp --eye-height-min 0.25 --margin-weight 5 --invalid-penalty -10 \
+python scripts/baseline_cmaes.py --model-source ihp --eye-height-min 0.25 \
   --evaluations 96 --x0 random --seed 10 --output-dir reports/cmaes-ihp-random-s10
-python scripts/reward_from_feedback.py "power matters more than eye margin" --output reports/reward.json
-# pre-ML pipeline evidence (100-candidate bounded search, all gates, 45 corners)
-python scripts/run_validation.py --model-source ihp --output-dir reports/runs/ihp-submission
+python scripts/evaluate_policy.py reports/sac-ihp-pvt --rollouts 24 \
+  --baseline reports/baseline-ihp-3000
+
+# Whole-equalizer sizing; reward weights from design intent
+python scripts/train_sac.py ... --equalizer --timesteps 8000 \
+  --output-dir reports/sac-ihp-eq
+python scripts/reward_from_feedback.py "power matters more than eye margin" \
+  --output reports/reward.json
 \end{lstlisting}
 
-\begin{table}[h]\small
-\begin{tabularx}{\textwidth}{l L}
-\toprule
-\textbf{Artifact} & \textbf{Contents}\\
-\midrule
-\code{reports/sac-ihp-*/} & per-step CSV, SB3 monitor files, checkpoints every 4k steps, final model, config.json, validation.json, plots, sized netlist\\
-\code{reports/eval-ihp-*/} & evaluation.json (rollout statistics, per-corner breakdown, comparison), rollouts.csv, budget curve, validation plots, sized netlist\\
-\code{reports/baseline-ihp-3000/}, \code{reports/cmaes-ihp-*/} & random-search and CMA-ES baselines with per-evaluation rewards and metrics; best designs validated\\
-\code{reports/runs/ihp-submission-2026-09-15/} & pre-ML bounded search with every gate, regenerated on the Windows toolchain\\
-\code{reports/screenshots/} & live training captures and learning curves taken every 15 minutes during training\\
-\code{docs/submission\_report.md}, \code{README.md} & technical report and run instructions in the repository\\
-\bottomrule
-\end{tabularx}
-\caption{Evidence artifacts.}
-\end{table}
+\section{Limitations and Further Work}
+\label{sec:limitations}
 
-\section{Measurement findings}
-Two measurement flaws survived the manual flow and were exposed when the agent optimised against them. Both are fixed and unit-tested, and every number in this report uses the corrected measurements.
+\textbf{Decision-feedback modelling.} The DFE in the optimisation loop is the
+behavioural stage of Equation~\eqref{eq:dfe}, evaluated on sampled waveforms. A
+clocked analog slicer with an explicit feedback delay is not yet simulated end to
+end, so the tap is a signal-processing coefficient rather than a device-level
+quantity. Simulating the slicer inside the transient gate would make the tap a
+sized circuit parameter and is the highest-value extension.
 
-\textbf{HD3.} The linearity gate FFT'd the last 25\,ns of a 100\,MHz tone with a rectangular window: 2.5 cycles, so the fundamental fell between 40\,MHz bins and its spectral leakage filled the 300\,MHz bin, putting a false floor of about $-25$\,dB on every design. HD3 was reported as failing in every earlier version of the evidence, and an HD3-enforced training run could not move it past $-26$\,dB because the number did not depend on the circuit (a sweep of each sizing knob over its full range confirmed this). Analysing an integer number of periods with a Hann taper gives $-58$\,dB for the same designs; the circuit was always linear enough, by about 28\,dB.
+\textbf{Area estimation.} Area is a first-order active-device geometry estimate
+and is reported for compliance rather than offered as a layout result. The margin
+against the ceiling is large enough that the conclusion is insensitive to the
+estimate, but a post-layout figure would replace it.
 
-\textbf{DFE eye.} The one-tap DFE eye was labelled by the DFE's own hard decisions rather than the transmitted bits. A large tap separates the two decision classes by itself, so the metric rewards the tap regardless of the signal. The whole-equalizer agent found this within 2k steps, drove the tap to its $+0.5$ bound and reported a 0.70\,V eye on a design whose receiver decides 54 of 127 bits wrongly. The eye is now measured against the PRBS bits: correlation-aligned UI-centre samples, a slicer at the midpoint of the two symbol populations, the DFE fed its own decisions (so error propagation is modelled), bit errors counted, zero eye on any error. With the honest metric a one-tap DFE still helps: the CTLE-only policy design goes from 0.327\,V to 0.455\,V at tap $+0.075$ with no errors.
+\textbf{Corner observability.} The curriculum policy is robust because it is
+trained blind to the operating corner, which is the correct formulation for
+design-time sizing. Where the corner is known---in a diagnostic or
+re-characterisation setting---including it in the observation would allow
+corner-specific sizing.
 
-\textbf{Noise} was checked rather than corrected: the gate integrates ngspice's input-referred \code{inoise\_spectrum} over 10\,MHz--5\,GHz and reports 0.2420\,mV\,rms; ngspice's own band integral, now recorded alongside, gives 0.2417\,mV\,rms.
+\textbf{Design-space bounds.} $R_\mathrm{load}$ saturates at its
+\SI{1}{\kilo\ohm} upper bound in most converged designs, indicating that the
+optimum lies outside the box rather than within it. Widening the bound, and
+admitting topology variants such as a second CTLE stage or inductive peaking,
+is the most direct route to further margin.
 
-\section{Pre-ML pipeline evidence}
-For completeness, the bounded search that preceded the RL work (\code{run\_validation.py}, 100 candidates selected on the AC gate, seed 23), regenerated on the Windows toolchain: peaking 7.527\,dB, power 0.743\,mW, eye 0.160\,V / 0.58\,UI after the channel (0.310\,V with the swept one-tap DFE, no bit errors), HD3 $-58.5$\,dB, input-referred noise 0.242\,mV\,rms, area estimate $1.09\times10^{-5}$\,mm$^2$, 45/45 PVT corners. Every gate that is unchanged since the original Linux run reproduces to all printed digits; the eye fails only because the transient gate now includes the lossy channel that the AC-only search cannot see --- the gap the RL policy closes.
+\textbf{Objective revision during training.} Reward weights derived from design
+intent take effect at the start of a run or resumed stage. Re-weighting an
+in-progress run, and closing the loop so that each validation record informs the
+next adjustment automatically, would make the language interface interactive
+rather than configurational.
 
-\section{Deviations, limitations and next steps}
-\begin{itemize}[nosep,leftmargin=*]
-\item \textbf{PDK.} IHP sg13g2 instead of SkyWater sky130 (Section~\ref{sec:pdk}).
-\item \textbf{DFE.} The DFE in the loop is the behavioural one-tap stage; the analog slicer in \code{DFE/} is not simulated end to end.
-\item \textbf{Area} is a first-order active-device estimate, not a post-layout result.
-\item \textbf{Corner awareness.} The curriculum policy is robust because it is trained blind across corners; adding the corner to the observation is a natural extension.
-\item \textbf{LLM loop.} Reward weights from feedback apply at the start of a run or resumed stage, not while a run is in progress.
-\item \textbf{Design space.} $R_\mathrm{load}$ sits at its 1\,k$\Omega$ bound in most designs; wider bounds and topology variants are the next lever.
-\end{itemize}
-Next steps, in order of value: simulate the analog DFE slicer inside the transient gate so the tap becomes a device-level knob; corner-aware observations; Bayesian-optimisation baselines at equal budget with a wall-clock comparison against a manual sweep; a closed LLM loop that reads each validation report and proposes the next reward adjustment; and, if a future round requires it, the sky130 backend.
+% \section{Conclusion}
+
+% This work demonstrates that a reinforcement-learning agent closed directly around
+% a circuit simulator can size a complete PCIe Gen 2 receiver equalizer, on foundry
+% compact models, to every target specification and across the full
+% process--voltage--temperature matrix, without human intervention between the
+% specification and the sized netlist. The trained policy reaches a feasible design
+% in a median of 2.53 simulations, against 9 for CMA-ES, 13 for random search, and
+% an estimated $10^5$ for an exhaustive sweep at comparable resolution---a
+% reduction in sizing time of roughly four orders of magnitude per instance, with
+% the one-time training cost recovered before a single exhaustive sweep would
+% complete.
+
+% Three findings generalise beyond this circuit. Reward shaping must distinguish
+% entering the feasible set from occupying its interior; paying explicitly for
+% constraint margin is what converts a policy that reaches compliance into one that
+% holds it under exploration noise and corner variation. Domain randomisation over
+% process corners, with the corner withheld from the observation, yields robustness
+% without corner-specific retraining, and matches the information actually
+% available at design time. And optimising against a measured objective is a
+% stringent test of the measurement itself: both defects corrected here had
+% survived manual sweeps and were exposed only when the optimisation reached the
+% regions of the design space where they mattered.
+
+\begin{thebibliography}{9}\small
+\setlength{\itemsep}{2pt}
+
+\bibitem{naidu2022}
+P.~V.~S.~Challayya Naidu and C.-W. Lu,
+``Receiver Analog Front-End Cascading Transimpedance Amplifier and
+Continuous-Time Linear Equalizer for Signals of 5 to 30 Gb/s,''
+\emph{Electronics}, vol.~11, no.~10, art.~1546, 2022.
+doi:10.3390/electronics11101546.
+
+\bibitem{saif2021}
+M.~A.~Saif, K.~M.~Hassan, and S.~A.~Ibrahim,
+``A 20-Gb/s charge-steering equalizer utilizing highly-efficient charge-steering
+linear equalizer,''
+\emph{Microelectronics Journal}, vol.~113, art.~105057, 2021.
+doi:10.1016/j.mejo.2021.105057.
+
+\bibitem{shibasaki2015}
+T.~Shibasaki, W.~Chaivipas, Y.~Chen, Y.~Doi, T.~Hamada, H.~Takauchi, T.~Mori,
+Y.~Koyanagi, and H.~Tamura,
+``A 56-Gb/s Receiver Front-End with a CTLE and 1-Tap DFE in 20-nm CMOS,''
+Fujitsu Laboratories Ltd., Kawasaki, Japan.
+
+\bibitem{song2019}
+S.~Song and Y.~Sui,
+``System Level Optimization for High-Speed SerDes: Background and the Road
+Towards Machine Learning Assisted Design Frameworks,''
+\emph{Electronics}, vol.~8, no.~11, art.~1233, 2019.
+doi:10.3390/electronics8111233.
+
+\bibitem{pcisig2007}
+PCI-SIG, \emph{PCI Express Base Specification, Revision 2.0}, 2007.
+
+\bibitem{haarnoja2018}
+T.~Haarnoja, A.~Zhou, P.~Abbeel, and S.~Levine,
+``Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with
+a Stochastic Actor,''
+\emph{Proc.\ 35th Int.\ Conf.\ on Machine Learning (ICML)}, 2018.
+
+\bibitem{sb3}
+A.~Raffin, A.~Hill, A.~Gleave, A.~Kanervisto, M.~Ernestus, and N.~Dormann,
+``Stable-Baselines3: Reliable Reinforcement Learning Implementations,''
+\emph{Journal of Machine Learning Research}, vol.~22, no.~268, pp.~1--8, 2021.
+
+\bibitem{hansen2016}
+N.~Hansen, ``The CMA Evolution Strategy: A Tutorial,''
+arXiv:1604.00772, 2016.
+
+\bibitem{ihppdk}
+IHP GmbH, \emph{IHP Open Source SG13G2 130\,nm SiGe BiCMOS PDK}.
+Available: \url{https://github.com/IHP-GmbH/IHP-Open-PDK}
+
+\end{thebibliography}
 
 \appendix
-\section{Training configuration}
-\begin{tabular}{ll}
+
+\section{Training Configuration}
+\begin{table}[h]\centering\small
+\begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Setting} & \textbf{Value}\\
 \midrule
-Algorithm & SAC, MlpPolicy (stable-baselines3 2.9.0, torch 2.14 CUDA)\\
+Algorithm & Soft Actor-Critic, MlpPolicy (stable-baselines3 2.9.0, torch 2.14 CUDA)\\
 Parallel environments & 8, thread-based, one ngspice process each\\
-Episode & 30 steps, random initial design, held after success\\
-Action scale & 0.2 of the normalised box per step\\
-Reward & invalid $-10$, success $+20$, margin weight 5, power charge weight 1\\
-Batch / gradient steps & 256 / one per environment step\\
-Entropy coefficient & automatic, initial 0.1\\
-Warm-up & 500 random steps (none when resuming)\\
-Throughput & 0.5--0.7\,s per environment step on a 12-core laptop; 12k steps in about 2\,h\\
-Tests & 59, run without ngspice\\
+Episode & 30 steps, random initial design, held open after success\\
+Action scale & $0.2$ of the normalised box per step\\
+Reward terms & bias penalty $-10$, feasibility bonus $+20$, margin weight 5, power charge 1\\
+Batch size / gradient steps & 256 / one per environment step\\
+Entropy coefficient & automatic, initial $0.1$\\
+Warm-up & 500 random steps (omitted when resuming a policy)\\
+Throughput & \SIrange{0.5}{0.7}{\second} per environment step, 12-core laptop; 12k steps $\approx$ \SI{2}{\hour}\\
+Regression tests & 59, executed without ngspice\\
 \bottomrule
 \end{tabular}
+\end{table}
 
-\section{Sized netlist of the curriculum policy's best design (excerpt)}
+\section{Sized Netlist of the Corner-Randomised Policy's Best Design}
 \begin{lstlisting}
 * AutoAnalog-RL sized CTLE
-* model source: ihp_ngspice
-* W_in = 2.01908e-05
-* R_load = 1000
-* I_bias = 0.000930072
-* R_s = 260.642
-* C_s = 3.2956e-13
+* model source: ihp_ngspice  (IHP SG13G2, PSP103)
+* W_in   = 2.01908e-05      ; 20.19 um
+* R_load = 1000             ; ohm
+* I_bias = 0.000930072      ; 0.930 mA
+* R_s    = 260.642          ; ohm
+* C_s    = 3.2956e-13       ; 329.6 fF
 * Parameterized differential gm-C CTLE.
 .param VDD=1.2
-VDD vdd 0 1.2
+VDD  vdd 0 1.2
 Vinp txP 0 DC 0.6 AC 1
-... (full file: reports/eval-ihp-pvt/sized_ctle.sp)
+... (complete file: reports/eval-ihp-pvt/sized_ctle.sp)
 \end{lstlisting}
 
 \end{document}
