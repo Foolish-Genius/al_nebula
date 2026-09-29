@@ -139,7 +139,12 @@ the scripts. The active submission report is generated under
 
 ## Report
 
-`docs/report/report.html` is the submission report; `python scripts/build_report.py`
-renders it to `docs/report/AutoAnalog-RL_report.pdf` with Chrome. `docs/report/report.tex`
-is the same report in LaTeX (figures in `docs/report/figures/`); build it with
-`tectonic report.tex` or `pdflatex`/`xelatex` twice, or open it in Overleaf as-is.
+Final reports and presentations in /astera
+
+# by Team Beluga:
+
+### Bharat Kumar Saxena
+
+### Medha Soni
+
+### Samarth Soni
