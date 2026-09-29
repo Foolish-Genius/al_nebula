@@ -1,4 +1,4 @@
-# AutoAnalog-RL research notes
+# research notes
 
 This folder contains the supplied CTLE paper and implementation-oriented references.
 
